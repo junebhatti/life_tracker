@@ -1,19 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import SectionHeading from "@/components/SectionHeading";
 import TaskRow from "@/components/TaskRow";
 import CalendarList from "@/components/CalendarList";
 import RoutineTracker from "@/components/RoutineTracker";
-import {
-  HABITS,
-  OPEN_TASKS,
-  TOP_THREE,
-  UPCOMING_EVENTS,
-  type Habit,
-  type Task,
-} from "@/lib/data";
+import { useTasks } from "@/components/TaskStore";
+import { useState } from "react";
+import { HABITS, UPCOMING_EVENTS, type Habit } from "@/lib/data";
 
 function formatToday(date: Date) {
   return date.toLocaleDateString("en-US", {
@@ -23,21 +18,29 @@ function formatToday(date: Date) {
   });
 }
 
+/** Placeholder rows shown until the task store has hydrated from storage. */
+function TaskSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className="flex flex-col gap-2 py-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-2">
+          <div className="h-[18px] w-[18px] shrink-0 animate-pulse rounded bg-hover" />
+          <div className="h-3 w-1/3 animate-pulse rounded bg-hover" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function TodayPage() {
-  const [topThree, setTopThree] = useState<Task[]>(TOP_THREE);
-  const [openTasks, setOpenTasks] = useState<Task[]>(OPEN_TASKS);
+  const { tasks, hydrated, toggleComplete, toggleStar } = useTasks();
   const [habits, setHabits] = useState<Habit[]>(HABITS);
 
   const today = new Date();
 
-  const toggleTask = (
-    setter: React.Dispatch<React.SetStateAction<Task[]>>,
-    id: string,
-  ) => {
-    setter((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-    );
-  };
+  const openTasks = tasks.filter((t) => t.status === "open");
+  const topThree = openTasks.filter((t) => t.starred);
+  const otherOpen = openTasks.filter((t) => !t.starred);
 
   const toggleHabit = (id: string) => {
     setHabits((prev) =>
@@ -58,30 +61,41 @@ export default function TodayPage() {
                 Today
               </p>
               <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">
-                {formatToday(today)}
+                {hydrated ? (
+                  formatToday(today)
+                ) : (
+                  <span className="inline-block h-8 w-64 animate-pulse rounded bg-hover align-middle" />
+                )}
               </h1>
             </header>
 
-            {/* Top 3 for today */}
+            {/* Top 3 for today (starred open tasks) */}
             <section className="mb-9">
               <SectionHeading title="Top 3 for Today" />
               <div className="flex flex-col">
-                {topThree.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    starred
-                    onToggle={(id) => toggleTask(setTopThree, id)}
-                  />
-                ))}
-                {topThree.length < 3 && (
-                  <div className="px-2 py-2 text-sm italic text-muted">
-                    (open spot)
-                  </div>
+                {!hydrated ? (
+                  <TaskSkeleton rows={2} />
+                ) : (
+                  <>
+                    {topThree.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        onToggleComplete={toggleComplete}
+                        onToggleStar={toggleStar}
+                      />
+                    ))}
+                    {topThree.length < 3 && (
+                      <div className="px-2 py-2 text-sm italic text-muted">
+                        (open spot)
+                      </div>
+                    )}
+                    <p className="px-2 pt-1 text-xs text-muted">
+                      Tap the star on any task below to set it as a top 3 for
+                      today.
+                    </p>
+                  </>
                 )}
-                <p className="px-2 pt-1 text-xs text-muted">
-                  Star a task below to set it as today&apos;s top 3.
-                </p>
               </div>
             </section>
 
@@ -93,16 +107,43 @@ export default function TodayPage() {
             {/* All open tasks */}
             <section>
               <SectionHeading
-                title={`All Open · ${openTasks.filter((t) => !t.done).length}`}
+                title={`All Open${hydrated ? ` · ${otherOpen.length}` : ""}`}
+                action={
+                  <Link
+                    href="/tasks?new=1"
+                    className="transition-colors hover:text-foreground"
+                  >
+                    + Add task
+                  </Link>
+                }
               />
               <div className="flex flex-col">
-                {openTasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    onToggle={(id) => toggleTask(setOpenTasks, id)}
-                  />
-                ))}
+                {!hydrated ? (
+                  <TaskSkeleton rows={4} />
+                ) : (
+                  <>
+                    {otherOpen.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        onToggleComplete={toggleComplete}
+                        onToggleStar={toggleStar}
+                      />
+                    ))}
+                    {otherOpen.length === 0 && (
+                      <p className="px-2 py-3 text-sm text-muted">
+                        No open tasks.{" "}
+                        <Link
+                          href="/tasks?new=1"
+                          className="text-foreground underline underline-offset-2"
+                        >
+                          Add one
+                        </Link>
+                        .
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             </section>
           </div>

@@ -12,7 +12,14 @@ type CalendarListProps = {
 export default function CalendarList({ events }: CalendarListProps) {
   return (
     <section>
-      <SectionHeading title="Up Next" action="View all" />
+      <SectionHeading
+        title="Up Next"
+        action={
+          <span className="transition-colors hover:text-foreground">
+            View all →
+          </span>
+        }
+      />
       <div className="flex flex-col">
         {events.map((event) => (
           <div

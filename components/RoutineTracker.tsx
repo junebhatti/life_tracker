@@ -17,7 +17,11 @@ export default function RoutineTracker({ habits, onToggle }: RoutineTrackerProps
     <section>
       <SectionHeading
         title={`Routines · ${doneCount}/${habits.length}`}
-        action="View all"
+        action={
+          <span className="transition-colors hover:text-foreground">
+            View all →
+          </span>
+        }
       />
 
       <div className="flex flex-col gap-3 pt-1">
