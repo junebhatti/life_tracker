@@ -19,8 +19,15 @@ type StatusFilter = TaskStatus | "all";
 type ProjectFilter = "all" | "none" | string;
 
 export default function TasksWorkspace() {
-  const { tasks, hydrated, toggleComplete, toggleStar, restoreTask, deleteTask } =
-    useTasks();
+  const {
+    tasks,
+    hydrated,
+    pendingIds,
+    toggleComplete,
+    toggleStar,
+    restoreTask,
+    deleteTask,
+  } = useTasks();
   const searchParams = useSearchParams();
 
   const [tab, setTab] = useState<Tab>("tasks");
@@ -179,6 +186,7 @@ export default function TasksWorkspace() {
                       <TaskRow
                         key={task.id}
                         task={task}
+                        pending={pendingIds.includes(task.id)}
                         onToggleComplete={toggleComplete}
                         onToggleStar={toggleStar}
                       />
