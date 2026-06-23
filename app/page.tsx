@@ -33,7 +33,7 @@ function TaskSkeleton({ rows }: { rows: number }) {
 }
 
 export default function TodayPage() {
-  const { tasks, hydrated, toggleComplete, toggleStar } = useTasks();
+  const { tasks, hydrated, pendingIds, toggleComplete, toggleStar } = useTasks();
   const [habits, setHabits] = useState<Habit[]>(HABITS);
 
   const today = new Date();
@@ -81,6 +81,7 @@ export default function TodayPage() {
                       <TaskRow
                         key={task.id}
                         task={task}
+                        pending={pendingIds.includes(task.id)}
                         onToggleComplete={toggleComplete}
                         onToggleStar={toggleStar}
                       />
@@ -126,6 +127,7 @@ export default function TodayPage() {
                       <TaskRow
                         key={task.id}
                         task={task}
+                        pending={pendingIds.includes(task.id)}
                         onToggleComplete={toggleComplete}
                         onToggleStar={toggleStar}
                       />

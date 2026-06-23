@@ -9,6 +9,8 @@ type TaskRowProps = {
   onToggleComplete: (id: string) => void;
   /** When provided, a clickable star is shown (toggles "Top 3 for Today"). */
   onToggleStar?: (id: string) => void;
+  /** Checked but within the grace period before committing to done. */
+  pending?: boolean;
 };
 
 /** A single task line: checkbox, title, project/due/recurrence tags, star. */
@@ -16,16 +18,21 @@ export default function TaskRow({
   task,
   onToggleComplete,
   onToggleStar,
+  pending = false,
 }: TaskRowProps) {
   const project = getProject(task.projectId);
   const overdue = isOverdue(task);
   const done = task.status === "done";
 
   return (
-    <div className="group flex items-start gap-3 rounded-md px-2 py-2 hover:bg-hover">
+    <div
+      className={`group flex items-start gap-3 rounded-md px-2 py-2 transition-opacity duration-1000 hover:bg-hover ${
+        pending ? "opacity-40" : "opacity-100"
+      }`}
+    >
       <div className="pt-0.5">
         <Checkbox
-          checked={done}
+          checked={done || pending}
           onChange={() => onToggleComplete(task.id)}
           label={task.title}
         />
