@@ -1,7 +1,7 @@
 "use client";
 
 import Checkbox from "./Checkbox";
-import { getProject } from "@/lib/projects";
+import { useProjects } from "./ProjectStore";
 import { dueLabel, isOverdue, type Task } from "@/lib/tasks";
 
 type TaskRowProps = {
@@ -20,7 +20,8 @@ export default function TaskRow({
   onToggleStar,
   pending = false,
 }: TaskRowProps) {
-  const project = getProject(task.projectId);
+  const { getProject } = useProjects();
+  const project = task.projectId ? getProject(task.projectId) : undefined;
   const overdue = isOverdue(task);
   const done = task.status === "done";
 

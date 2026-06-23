@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { PROJECTS } from "@/lib/projects";
+import { useProjects } from "./ProjectStore";
 import {
   DUE_GROUP_ORDER,
   dueGroup,
@@ -28,6 +28,7 @@ export default function TasksWorkspace() {
     restoreTask,
     deleteTask,
   } = useTasks();
+  const { projects } = useProjects();
   const searchParams = useSearchParams();
 
   const [tab, setTab] = useState<Tab>("tasks");
@@ -155,7 +156,7 @@ export default function TasksWorkspace() {
               >
                 No project
               </Chip>
-              {PROJECTS.map((p) => (
+              {projects.map((p) => (
                 <Chip
                   key={p.id}
                   active={projectFilter === p.id}
