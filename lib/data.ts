@@ -1,11 +1,5 @@
-// Central data + types for the Life Tracker.
-//
-// For now this file returns hand-written placeholder data so the UI can be
-// built and reviewed. Each shape is intentionally close to what the real
-// sources will return, so swapping in live data later is a small change:
-//   - tasks      -> a database / task store
-//   - events     -> Google Calendar API
-//   - habits     -> a database (daily habit/routine tracker)
+// Navigation, calendar, and habit data.
+// Tasks now live in lib/tasks.ts and are managed by the task store.
 
 export type NavItem = {
   label: string;
@@ -19,73 +13,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Projects", href: "/projects" },
   { label: "People", href: "/people" },
   { label: "Library", href: "/library" },
-];
-
-export type Task = {
-  id: string;
-  title: string;
-  /** Optional project / tag shown under the task title. */
-  project?: string;
-  /** Human-readable due label, e.g. "Due today", "Overdue 3d". */
-  due?: string;
-  /** Marks a task as overdue so it can be styled differently. */
-  overdue?: boolean;
-  /** Optional recurrence label, e.g. "Monthly", "Weekly". */
-  recurrence?: string;
-  done: boolean;
-};
-
-/** The three tasks the user most wants to make progress on today. */
-export const TOP_THREE: Task[] = [
-  { id: "t1", title: "Finish editing", due: "Due today", done: false },
-  {
-    id: "t2",
-    title: "Missoula Google Ads",
-    project: "Glacier Precast Concrete",
-    due: "Due today",
-    done: false,
-  },
-];
-
-/** All currently open (incomplete) tasks. */
-export const OPEN_TASKS: Task[] = [
-  {
-    id: "o1",
-    title: "Check oil Ford Ranger",
-    project: "Home",
-    due: "Overdue 3d",
-    overdue: true,
-    recurrence: "Monthly",
-    done: false,
-  },
-  {
-    id: "o2",
-    title: "Setup Review Request System",
-    project: "Black Diamond Services",
-    due: "Due today",
-    done: false,
-  },
-  {
-    id: "o3",
-    title: "Audit Ads Performance",
-    project: "Black Diamond Services",
-    due: "Due today",
-    recurrence: "Weekly",
-    done: false,
-  },
-  {
-    id: "o4",
-    title: "Draft monthly newsletter",
-    project: "Content",
-    due: "Due Fri",
-    done: false,
-  },
-  {
-    id: "o5",
-    title: "Call insurance about claim",
-    project: "Home",
-    done: false,
-  },
 ];
 
 export type CalendarEvent = {
