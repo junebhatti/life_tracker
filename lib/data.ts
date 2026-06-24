@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Library", href: "/library" },
 ];
 
+/** Shape returned by /api/calendar/events, sourced from Google Calendar. */
 export type CalendarEvent = {
   id: string;
   title: string;
@@ -24,37 +25,6 @@ export type CalendarEvent = {
   time?: string;
   location?: string;
 };
-
-/** Upcoming calendar events — will be sourced from Google Calendar. */
-export const UPCOMING_EVENTS: CalendarEvent[] = [
-  {
-    id: "e1",
-    title: "Jerad and Sam Josephson",
-    day: "Today",
-    time: "2:30 PM",
-  },
-  {
-    id: "e2",
-    title: "Mal Dinner",
-    day: "Fri",
-    time: "7:00 PM",
-    location: "Montana Prime Steakhouse",
-  },
-  {
-    id: "e3",
-    title: "Church",
-    day: "Sun",
-    time: "11:00 AM",
-    location: "Easthaven Baptist Church, Kalispell, MT",
-  },
-  {
-    id: "e4",
-    title: "Table Group",
-    day: "Mon",
-    time: "6:00 PM",
-    location: "Black Rifle Coffee Company, Kalispell, MT",
-  },
-];
 
 export type Habit = {
   id: string;
