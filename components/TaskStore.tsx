@@ -8,20 +8,62 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAuth } from "./AuthProvider";
+import { supabase } from "@/lib/supabase";
 import {
-  seedTasks,
   type NewTaskInput,
   type Task,
+  type TaskStatus,
 } from "@/lib/tasks";
-
-const STORAGE_KEY = "life-tracker:tasks:v1";
 
 /** How long a checked task lingers (faded) before it commits to done. */
 const COMPLETE_DELAY_MS = 2000;
 
+type TaskRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  project_id: string | null;
+  due: string | null;
+  recurrence: string | null;
+  starred: boolean;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+};
+
+function fromRow(row: TaskRow): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    projectId: row.project_id ?? undefined,
+    due: row.due ?? undefined,
+    recurrence: row.recurrence ?? undefined,
+    starred: row.starred,
+    status: row.status as TaskStatus,
+    createdAt: row.created_at,
+    completedAt: row.completed_at ?? undefined,
+  };
+}
+
+function toRow(task: Task, userId: string): TaskRow {
+  return {
+    id: task.id,
+    user_id: userId,
+    title: task.title,
+    project_id: task.projectId ?? null,
+    due: task.due ?? null,
+    recurrence: task.recurrence ?? null,
+    starred: task.starred,
+    status: task.status,
+    created_at: task.createdAt,
+    completed_at: task.completedAt ?? null,
+  };
+}
+
 type TaskStore = {
   tasks: Task[];
-  /** False until the client has loaded state from storage. Gate date-relative
+  /** False until the client has loaded state from Supabase. Gate date-relative
    *  UI on this to avoid server/client hydration mismatches. */
   hydrated: boolean;
   /** Ids of tasks checked but not yet committed to done (grace period). */
@@ -41,7 +83,8 @@ function makeId() {
 }
 
 export function TaskStoreProvider({ children }: { children: React.ReactNode }) {
-  const [tasks, setTasks] = useState<Task[]>(() => seedTasks());
+  const { user } = useAuth();
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [pendingIds, setPendingIds] = useState<string[]>([]);
 
@@ -59,116 +102,226 @@ export function TaskStoreProvider({ children }: { children: React.ReactNode }) {
     return () => map.forEach((t) => clearTimeout(t));
   }, []);
 
-  // Load saved tasks from localStorage once, on mount. Until this runs, the
-  // consumers render a placeholder (gated on `hydrated`), so the server HTML
-  // and the first client render match.
+  // Load this user's tasks from Supabase, then subscribe to row changes so
+  // edits made on another device or tab show up here too.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Task[];
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (Array.isArray(parsed)) setTasks(parsed);
-      }
-    } catch {
-      // ignore malformed storage
-    }
-    setHydrated(true);
-  }, []);
-
-  // Persist on every change after the initial load.
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-    } catch {
-      // ignore quota / privacy-mode errors
-    }
-  }, [tasks, hydrated]);
-
-  const addTask = useCallback((input: NewTaskInput) => {
-    const task: Task = {
-      id: makeId(),
-      title: input.title.trim(),
-      projectId: input.projectId,
-      due: input.due,
-      recurrence: input.recurrence,
-      starred: input.starred ?? false,
-      status: input.status ?? "open",
-      createdAt: new Date().toISOString(),
-      completedAt: input.status === "done" ? new Date().toISOString() : undefined,
-    };
-    setTasks((prev) => [task, ...prev]);
-  }, []);
-
-  const updateTask = useCallback((id: string, patch: Partial<Task>) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-  }, []);
-
-  const toggleComplete = useCallback((id: string) => {
-    const task = tasksRef.current.find((t) => t.id === id);
-    if (!task) return;
-
-    // Mid grace period: a second click cancels the pending completion
-    // (the "oops, keep it" case) and leaves the task open.
-    const existing = timers.current.get(id);
-    if (existing) {
-      clearTimeout(existing);
-      timers.current.delete(id);
-      setPendingIds((prev) => prev.filter((p) => p !== id));
+    if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTasks([]);
+      setHydrated(false);
       return;
     }
 
-    // Re-open an already-completed task immediately (no delay needed).
-    if (task.status === "done") {
+    let active = true;
+    setHydrated(false);
+
+    supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", user.id)
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          console.error("Failed to load tasks", error);
+        } else if (data) {
+          setTasks((data as TaskRow[]).map(fromRow));
+        }
+        setHydrated(true);
+      });
+
+    const channel = supabase
+      .channel(`tasks:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const oldId = (payload.old as { id: string }).id;
+            setTasks((prev) => prev.filter((t) => t.id !== oldId));
+            return;
+          }
+          const next = fromRow(payload.new as TaskRow);
+          setTasks((prev) => {
+            const idx = prev.findIndex((t) => t.id === next.id);
+            if (idx === -1) return [next, ...prev];
+            const copy = [...prev];
+            copy[idx] = next;
+            return copy;
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const addTask = useCallback(
+    (input: NewTaskInput) => {
+      if (!user) return;
+      const task: Task = {
+        id: makeId(),
+        title: input.title.trim(),
+        projectId: input.projectId,
+        due: input.due,
+        recurrence: input.recurrence,
+        starred: input.starred ?? false,
+        status: input.status ?? "open",
+        createdAt: new Date().toISOString(),
+        completedAt: input.status === "done" ? new Date().toISOString() : undefined,
+      };
+      setTasks((prev) => [task, ...prev]);
+      supabase
+        .from("tasks")
+        .insert(toRow(task, user.id))
+        .then(({ error }) => {
+          if (error) console.error("Failed to save task", error);
+        });
+    },
+    [user],
+  );
+
+  const updateTask = useCallback(
+    (id: string, patch: Partial<Task>) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+      if (!user) return;
+      const row = toRow({ ...tasksRef.current.find((t) => t.id === id), ...patch } as Task, user.id);
+      supabase
+        .from("tasks")
+        .update(row)
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) console.error("Failed to update task", error);
+        });
+    },
+    [user],
+  );
+
+  const toggleComplete = useCallback(
+    (id: string) => {
+      const task = tasksRef.current.find((t) => t.id === id);
+      if (!task) return;
+
+      // Mid grace period: a second click cancels the pending completion
+      // (the "oops, keep it" case) and leaves the task open.
+      const existing = timers.current.get(id);
+      if (existing) {
+        clearTimeout(existing);
+        timers.current.delete(id);
+        setPendingIds((prev) => prev.filter((p) => p !== id));
+        return;
+      }
+
+      // Re-open an already-completed task immediately (no delay needed).
+      if (task.status === "done") {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...t, status: "open", completedAt: undefined } : t,
+          ),
+        );
+        if (user) {
+          supabase
+            .from("tasks")
+            .update({ status: "open", completed_at: null })
+            .eq("id", id)
+            .then(({ error }) => {
+              if (error) console.error("Failed to reopen task", error);
+            });
+        }
+        return;
+      }
+
+      // Open task: hold it (faded) for a couple seconds before committing,
+      // so an accidental click can be undone by clicking again.
+      setPendingIds((prev) => [...prev, id]);
+      const timer = setTimeout(() => {
+        const completedAt = new Date().toISOString();
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...t, status: "done", completedAt } : t,
+          ),
+        );
+        setPendingIds((prev) => prev.filter((p) => p !== id));
+        timers.current.delete(id);
+        if (user) {
+          supabase
+            .from("tasks")
+            .update({ status: "done", completed_at: completedAt })
+            .eq("id", id)
+            .then(({ error }) => {
+              if (error) console.error("Failed to complete task", error);
+            });
+        }
+      }, COMPLETE_DELAY_MS);
+      timers.current.set(id, timer);
+    },
+    [user],
+  );
+
+  const toggleStar = useCallback(
+    (id: string) => {
+      const next = !tasksRef.current.find((t) => t.id === id)?.starred;
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, starred: next } : t)),
+      );
+      if (!user) return;
+      supabase
+        .from("tasks")
+        .update({ starred: next })
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) console.error("Failed to star task", error);
+        });
+    },
+    [user],
+  );
+
+  const restoreTask = useCallback(
+    (id: string) => {
       setTasks((prev) =>
         prev.map((t) =>
           t.id === id ? { ...t, status: "open", completedAt: undefined } : t,
         ),
       );
-      return;
-    }
+      if (!user) return;
+      supabase
+        .from("tasks")
+        .update({ status: "open", completed_at: null })
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) console.error("Failed to restore task", error);
+        });
+    },
+    [user],
+  );
 
-    // Open task: hold it (faded) for a couple seconds before committing,
-    // so an accidental click can be undone by clicking again.
-    setPendingIds((prev) => [...prev, id]);
-    const timer = setTimeout(() => {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === id
-            ? { ...t, status: "done", completedAt: new Date().toISOString() }
-            : t,
-        ),
-      );
-      setPendingIds((prev) => prev.filter((p) => p !== id));
-      timers.current.delete(id);
-    }, COMPLETE_DELAY_MS);
-    timers.current.set(id, timer);
-  }, []);
-
-  const toggleStar = useCallback((id: string) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, starred: !t.starred } : t)),
-    );
-  }, []);
-
-  const restoreTask = useCallback((id: string) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, status: "open", completedAt: undefined } : t,
-      ),
-    );
-  }, []);
-
-  const deleteTask = useCallback((id: string) => {
-    const timer = timers.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.current.delete(id);
-      setPendingIds((prev) => prev.filter((p) => p !== id));
-    }
-    setTasks((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  const deleteTask = useCallback(
+    (id: string) => {
+      const timer = timers.current.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        timers.current.delete(id);
+        setPendingIds((prev) => prev.filter((p) => p !== id));
+      }
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      if (!user) return;
+      supabase
+        .from("tasks")
+        .delete()
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) console.error("Failed to delete task", error);
+        });
+    },
+    [user],
+  );
 
   return (
     <TaskContext.Provider
