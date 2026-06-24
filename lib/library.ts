@@ -13,8 +13,9 @@ export type LibraryNote = {
   /** Tags added in the app. Sync never touches this, so they survive
    *  re-syncing the same note from Obsidian. */
   manualTags: string[];
-  /** The folder the note sits directly inside, used to group the Library
-   *  into tabs (e.g. "Quotes/Tony Robbins.md" -> category "Quotes"). */
+  /** The top-level folder inside the synced vault, used to group the
+   *  Library into tabs (e.g. anything under "Quotes/..." gets category
+   *  "Quotes", no matter how deeply nested beneath that folder). */
   category?: string;
   /** Person IDs this note is linked to, resolved at sync time from a
    *  `person`/`people` frontmatter field. */
@@ -81,11 +82,14 @@ function titleFromPath(path: string): string {
   return file.replace(/\.md$/i, "");
 }
 
-/** The folder a note sits directly inside, e.g. "Quotes/Tony Robbins.md" ->
- *  "Quotes". Undefined if the note has no parent folder. */
+/** The top-level folder inside the synced vault, e.g.
+ *  "MyVault/Quotes/Tony Robbins/Note.md" -> "Quotes". `folders[0]` is the
+ *  synced root itself (whatever folder was picked), so the category is the
+ *  next segment down, regardless of how deeply the note is nested beneath
+ *  it. Undefined for notes sitting directly in the synced root. */
 function categoryFromPath(path: string): string | undefined {
   const folders = path.split("/").slice(0, -1);
-  return folders.length > 0 ? folders[folders.length - 1] : undefined;
+  return folders.length > 1 ? folders[1] : undefined;
 }
 
 function isInPeopleFolder(path: string): boolean {
