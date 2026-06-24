@@ -182,6 +182,24 @@ function eventStartMs(item: GoogleEventItem): number {
   return new Date(item.start?.dateTime ?? Date.now()).getTime();
 }
 
+/** The same full-calendar-days-through-today+WINDOW_DAYS bound used for the Up Next feed. */
+function upcomingWindow(): { now: Date; todayKey: string; timeMax: Date } {
+  const now = new Date();
+  const todayKey = dateKeyInTZ(now, TIME_ZONE);
+
+  // Cover full calendar days through today+WINDOW_DAYS inclusive, not a
+  // rolling 7×24h span from the current instant — otherwise events later
+  // in the day on the final day get cut off whenever "now" is in the
+  // afternoon, and the same weekday one week out wouldn't be included.
+  const [wy, wm, wd] = todayKey.split("-").map(Number);
+  const windowEndKey = new Date(Date.UTC(wy, wm - 1, wd + WINDOW_DAYS + 1))
+    .toISOString()
+    .slice(0, 10);
+  const timeMax = startOfDayUTC(windowEndKey, TIME_ZONE);
+
+  return { now, todayKey, timeMax };
+}
+
 async function fetchAccountEvents(
   account: GoogleAccount,
   timeMin: Date,
@@ -222,19 +240,7 @@ async function fetchAccountEvents(
 
 export async function fetchUpcomingEvents(maxResults = MAX_UP_NEXT): Promise<CalendarEvent[]> {
   const accounts = configuredAccounts();
-  const now = new Date();
-
-  const todayKey = dateKeyInTZ(now, TIME_ZONE);
-
-  // Cover full calendar days through today+WINDOW_DAYS inclusive, not a
-  // rolling 7×24h span from the current instant — otherwise events later
-  // in the day on the final day get cut off whenever "now" is in the
-  // afternoon, and the same weekday one week out wouldn't be included.
-  const [wy, wm, wd] = todayKey.split("-").map(Number);
-  const windowEndKey = new Date(Date.UTC(wy, wm - 1, wd + WINDOW_DAYS + 1))
-    .toISOString()
-    .slice(0, 10);
-  const timeMax = startOfDayUTC(windowEndKey, TIME_ZONE);
+  const { now, todayKey, timeMax } = upcomingWindow();
 
   const results = await Promise.allSettled(
     accounts.map((account) => fetchAccountEvents(account, now, timeMax)),
@@ -277,4 +283,40 @@ export async function fetchUpcomingEvents(maxResults = MAX_UP_NEXT): Promise<Cal
   }
 
   return deduped.map((item) => toCalendarEvent(item, todayKey));
+}
+
+export type AccountStatus = {
+  key: string;
+  calendarId: string;
+  connected: boolean;
+  /** Number of events found in the same window the Up Next feed queries. */
+  eventCount?: number;
+  error?: string;
+};
+
+/** Per-account connectivity check, for the Settings page's "test sync" button. */
+export async function checkAccountsStatus(): Promise<AccountStatus[]> {
+  const accounts = configuredAccounts();
+  const { now, timeMax } = upcomingWindow();
+
+  return Promise.all(
+    accounts.map(async (account) => {
+      try {
+        const items = await fetchAccountEvents(account, now, timeMax);
+        return {
+          key: account.key,
+          calendarId: account.calendarId,
+          connected: true,
+          eventCount: items.length,
+        };
+      } catch (error) {
+        return {
+          key: account.key,
+          calendarId: account.calendarId,
+          connected: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }),
+  );
 }
