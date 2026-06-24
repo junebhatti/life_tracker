@@ -1,9 +1,14 @@
 // Routine model: a recurring daily habit tracked by date-keyed completion
 // history, grouped by time of day, with an optional streak goal.
 
-export type RoutinePeriod = "Morning" | "Afternoon" | "Evening";
+export type RoutinePeriod = "Morning" | "Afternoon" | "Evening" | "Anytime";
 
-export const ROUTINE_PERIODS: RoutinePeriod[] = ["Morning", "Afternoon", "Evening"];
+export const ROUTINE_PERIODS: RoutinePeriod[] = [
+  "Morning",
+  "Afternoon",
+  "Evening",
+  "Anytime",
+];
 
 export type Routine = {
   id: string;
