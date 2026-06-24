@@ -7,8 +7,6 @@ import TaskRow from "@/components/TaskRow";
 import CalendarList from "@/components/CalendarList";
 import RoutineTracker from "@/components/RoutineTracker";
 import { useTasks } from "@/components/TaskStore";
-import { useState } from "react";
-import { HABITS, type Habit } from "@/lib/data";
 
 function formatToday(date: Date) {
   return date.toLocaleDateString("en-US", {
@@ -34,19 +32,12 @@ function TaskSkeleton({ rows }: { rows: number }) {
 
 export default function TodayPage() {
   const { tasks, hydrated, pendingIds, toggleComplete, toggleStar } = useTasks();
-  const [habits, setHabits] = useState<Habit[]>(HABITS);
 
   const today = new Date();
 
   const openTasks = tasks.filter((t) => t.status === "open");
   const topThree = openTasks.filter((t) => t.starred);
   const otherOpen = openTasks.filter((t) => !t.starred);
-
-  const toggleHabit = (id: string) => {
-    setHabits((prev) =>
-      prev.map((h) => (h.id === id ? { ...h, done: !h.done } : h)),
-    );
-  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -152,7 +143,7 @@ export default function TodayPage() {
 
           {/* Right column — routines / habit tracker */}
           <div className="w-72 shrink-0">
-            <RoutineTracker habits={habits} onToggle={toggleHabit} />
+            <RoutineTracker />
           </div>
         </div>
       </main>

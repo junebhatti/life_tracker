@@ -39,6 +39,19 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      <nav className="mt-auto flex flex-col gap-0.5 border-t border-border pt-2">
+        <Link
+          href="/settings"
+          className={`rounded-md px-2 py-1.5 text-sm transition-colors ${
+            pathname.startsWith("/settings")
+              ? "bg-hover font-medium text-foreground"
+              : "text-neutral-600 hover:bg-hover"
+          }`}
+        >
+          Settings
+        </Link>
+      </nav>
     </aside>
   );
 }
