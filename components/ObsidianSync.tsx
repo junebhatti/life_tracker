@@ -9,6 +9,7 @@ import {
   collectMarkdownFiles,
   ensureReadPermission,
   loadVaultHandle,
+  queryReadPermission,
   saveVaultHandle,
   supportsFsAccess,
 } from "@/lib/vaultHandle";
@@ -46,20 +47,16 @@ export default function ObsidianSync() {
   const [savedFolder, setSavedFolder] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [autoSynced, setAutoSynced] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const didAutoSync = useRef(false);
 
-  // Restore the remembered folder name and last-sync time on mount.
+  // Restore the last-sync time shown in the UI.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLastSyncedAt(localStorage.getItem(LAST_SYNCED_KEY));
-    if (!fsSupported) return;
-    loadVaultHandle()
-      .then((handle) => {
-        if (handle) setSavedFolder(handle.name);
-      })
-      .catch(() => {});
-  }, [fsSupported]);
+  }, []);
 
   /** Parse a batch of Markdown files and upsert them into the Library. */
   const processFiles = async (files: { path: string; file: File }[]) => {
@@ -158,6 +155,27 @@ export default function ObsidianSync() {
     setResult(null);
   };
 
+  // On mount: restore the remembered folder, and — if the browser still trusts
+  // us with it (no prompt needed) — auto-pull the latest notes. That gives
+  // "re-syncs when I reopen the tab" whenever the permission has persisted;
+  // otherwise the manual "Re-sync now" button re-grants it with one click.
+  useEffect(() => {
+    if (!fsSupported || didAutoSync.current) return;
+    didAutoSync.current = true;
+
+    loadVaultHandle()
+      .then(async (handle) => {
+        if (!handle) return;
+        setSavedFolder(handle.name);
+        if ((await queryReadPermission(handle)) !== "granted") return;
+        setAutoSynced(true);
+        await runSync(() => collectMarkdownFiles(handle, `${handle.name}/`));
+      })
+      .catch(() => {});
+    // Runs once per mount (guarded by didAutoSync); runSync is captured fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fsSupported]);
+
   // --- Fallback path (Safari/Firefox): plain folder <input>, re-pick each time. ---
 
   const handleInputFiles = (fileList: FileList | null) => {
@@ -241,9 +259,12 @@ export default function ObsidianSync() {
           {savedFolder && (
             <p className="mt-2 text-xs text-muted">
               Remembered folder:{" "}
-              <span className="text-foreground">{savedFolder}</span>. Click{" "}
-              <span className="text-foreground">Re-sync now</span> any time to
-              pull your latest notes — no re-picking.
+              <span className="text-foreground">{savedFolder}</span>.{" "}
+              {autoSynced
+                ? "Auto-synced when you opened this page. "
+                : "It re-syncs automatically when you reopen this page, as long as your browser still has permission. "}
+              Click <span className="text-foreground">Re-sync now</span> any time
+              to pull your latest notes — no re-picking.
             </p>
           )}
         </>

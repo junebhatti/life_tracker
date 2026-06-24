@@ -82,6 +82,18 @@ type HandleWithPermission = FileSystemDirectoryHandle & {
   }) => Promise<PermissionState>;
 };
 
+/** Checks read access to a saved folder WITHOUT prompting — safe to call on
+ *  page load. Returns "granted" only if the browser still trusts us with the
+ *  folder; "prompt" means a user click is needed to re-grant (so auto-sync on
+ *  load isn't possible and the manual button must be used). */
+export async function queryReadPermission(
+  handle: FileSystemDirectoryHandle,
+): Promise<PermissionState> {
+  const h = handle as HandleWithPermission;
+  if (!h.queryPermission) return "granted";
+  return h.queryPermission({ mode: "read" });
+}
+
 /** Re-checks (and if needed re-prompts for) read access to a saved folder.
  *  Must be called from a user gesture so the permission prompt can show. */
 export async function ensureReadPermission(
