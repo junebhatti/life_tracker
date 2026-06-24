@@ -21,6 +21,7 @@ type Result = {
   linkedToPeople: number;
   newPeople: number;
   skipped: number;
+  removed: number;
 };
 
 const LAST_SYNCED_KEY = "obsidian_last_synced_at";
@@ -42,7 +43,7 @@ type PickerWindow = Window & {
  *  read your laptop's files on its own, so there's no true background refresh —
  *  but with a remembered folder, re-syncing is a single click. */
 export default function ObsidianSync() {
-  const { syncNotes } = useLibrary();
+  const { notes, syncNotes, deleteNote } = useLibrary();
   const { ensurePeopleByName } = usePeople();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -96,8 +97,9 @@ export default function ObsidianSync() {
 
   /** Parse a batch of Markdown files and upsert them into the Library.
    *  Always scans every file so the folder checklist stays accurate, but
-   *  only syncs notes from checked folders — unchecked folders are skipped,
-   *  not deleted, so re-checking one later picks its notes back up. */
+   *  only syncs notes from checked folders — notes from an unchecked folder
+   *  are removed from the Library (if previously synced) and skipped on
+   *  future syncs, until the folder is checked again. */
   const processFiles = async (files: { path: string; file: File }[]) => {
     const mdFiles = files.filter(
       (f) =>
@@ -123,6 +125,11 @@ export default function ObsidianSync() {
     const included = parsed.filter(
       (n) => !includedFolders || !n.category || includedFolders.has(n.category),
     );
+    const excludedPaths = new Set(
+      parsed.filter((n) => !included.includes(n)).map((n) => n.path),
+    );
+    const toRemove = notes.filter((n) => excludedPaths.has(n.path));
+    for (const note of toRemove) deleteNote(note.id);
 
     const personNames = Array.from(
       new Set(included.flatMap((n) => n.personNames)),
@@ -153,6 +160,7 @@ export default function ObsidianSync() {
       linkedToPeople: rows.filter((r) => r.personIds.length > 0).length,
       newPeople: createdNames.length,
       skipped: parsed.length - included.length,
+      removed: toRemove.length,
     });
   };
 
@@ -370,8 +378,8 @@ export default function ObsidianSync() {
             })}
           </div>
           <p className="mt-1.5 text-xs text-muted">
-            Unchecked folders are skipped on your next sync. Notes already in
-            the Library from them stay put until you delete them there.
+            Unchecking a folder removes its notes from the Library on your
+            next sync. Check it again to bring them back.
           </p>
         </div>
       )}
@@ -383,7 +391,8 @@ export default function ObsidianSync() {
         <p className="mt-1 text-xs text-muted">
           Scanned {result.scanned} note{result.scanned === 1 ? "" : "s"} ·{" "}
           {result.created} new, {result.updated} updated
-          {result.skipped > 0 ? `, ${result.skipped} skipped` : ""} ·{" "}
+          {result.skipped > 0 ? `, ${result.skipped} skipped` : ""}
+          {result.removed > 0 ? `, ${result.removed} removed` : ""} ·{" "}
           {result.linkedToPeople} linked to people
           {result.newPeople > 0 ? ` (${result.newPeople} new)` : ""}.
         </p>
