@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import {
+  clampMilestoneWeight,
   seedProjects,
   type ActivityKind,
   type ChecklistRecurrence,
@@ -133,7 +134,12 @@ export function ProjectStoreProvider({
         ...p,
         milestones: [
           ...p.milestones,
-          { id: makeId("m"), title: title.trim(), weight, done: false },
+          {
+            id: makeId("m"),
+            title: title.trim(),
+            weight: clampMilestoneWeight(weight),
+            done: false,
+          },
         ],
       }));
     },
@@ -146,10 +152,14 @@ export function ProjectStoreProvider({
       milestoneId: string,
       patch: { title?: string; weight?: number },
     ) => {
+      const clamped =
+        patch.weight !== undefined
+          ? { ...patch, weight: clampMilestoneWeight(patch.weight) }
+          : patch;
       patchProject(projectId, (p) => ({
         ...p,
         milestones: p.milestones.map((m) =>
-          m.id === milestoneId ? { ...m, ...patch } : m,
+          m.id === milestoneId ? { ...m, ...clamped } : m,
         ),
       }));
     },

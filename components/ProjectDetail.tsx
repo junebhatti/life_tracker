@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import Checkbox from "./Checkbox";
 import TaskRow from "./TaskRow";
@@ -9,8 +9,11 @@ import NewTaskForm from "./NewTaskForm";
 import { useProjects } from "./ProjectStore";
 import { useTasks } from "./TaskStore";
 import {
+  MILESTONE_WEIGHT_MAX,
+  MILESTONE_WEIGHT_MIN,
   PROJECT_COLORS,
   RECURRENCE_LABELS,
+  clampMilestoneWeight,
   projectHours,
   projectProgress,
   type ChecklistRecurrence,
@@ -39,12 +42,15 @@ function activityTime(at: string) {
 export default function ProjectDetail() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const router = useRouter();
 
   const {
     hydrated,
     getProject,
     updateProject,
+    deleteProject,
     addMilestone,
+    updateMilestone,
     toggleMilestone,
     deleteMilestone,
     addChecklistItem,
@@ -56,7 +62,13 @@ export default function ProjectDetail() {
 
   // Add-milestone form
   const [msTitle, setMsTitle] = useState("");
-  const [msWeight, setMsWeight] = useState(10);
+  const [msWeight, setMsWeight] = useState(MILESTONE_WEIGHT_MAX);
+  // Edit-milestone form
+  const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(
+    null,
+  );
+  const [editTitle, setEditTitle] = useState("");
+  const [editWeight, setEditWeight] = useState(MILESTONE_WEIGHT_MAX);
   // Add-checklist form
   const [clTitle, setClTitle] = useState("");
   const [clRecur, setClRecur] = useState<ChecklistRecurrence>("one-shot");
@@ -100,9 +112,41 @@ export default function ProjectDetail() {
   const submitMilestone = (e: React.FormEvent) => {
     e.preventDefault();
     if (!msTitle.trim()) return;
-    addMilestone(project.id, msTitle, Number.isFinite(msWeight) ? msWeight : 10);
+    addMilestone(project.id, msTitle, clampMilestoneWeight(msWeight));
     setMsTitle("");
-    setMsWeight(10);
+    setMsWeight(MILESTONE_WEIGHT_MAX);
+  };
+
+  const startEditMilestone = (milestoneId: string, title: string, weight: number) => {
+    setEditingMilestoneId(milestoneId);
+    setEditTitle(title);
+    setEditWeight(weight);
+  };
+
+  const cancelEditMilestone = () => {
+    setEditingMilestoneId(null);
+  };
+
+  const submitEditMilestone = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMilestoneId || !editTitle.trim()) return;
+    updateMilestone(project.id, editingMilestoneId, {
+      title: editTitle,
+      weight: clampMilestoneWeight(editWeight),
+    });
+    setEditingMilestoneId(null);
+  };
+
+  const handleDeleteProject = () => {
+    if (
+      !window.confirm(
+        `Delete "${project.name}"? This removes all its milestones, checklist items, and activity. This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    deleteProject(project.id);
+    router.push("/projects");
   };
 
   const submitChecklist = (e: React.FormEvent) => {
@@ -152,11 +196,20 @@ export default function ProjectDetail() {
             {project.name}
           </h1>
         </div>
-        {targetLabel(project.target) && (
-          <span className="whitespace-nowrap pt-1 text-xs text-muted">
-            {targetLabel(project.target)}
-          </span>
-        )}
+        <div className="flex shrink-0 flex-col items-end gap-2 pt-1">
+          {targetLabel(project.target) && (
+            <span className="whitespace-nowrap text-xs text-muted">
+              {targetLabel(project.target)}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleDeleteProject}
+            className="text-[11px] uppercase tracking-wider text-muted transition-colors hover:text-accent"
+          >
+            Delete project
+          </button>
+        </div>
       </div>
 
       {/* Color */}
@@ -189,37 +242,83 @@ export default function ProjectDetail() {
       {/* Milestones */}
       <Section title={`Milestones · ${progress.pct}%`}>
         <div className="flex flex-col">
-          {project.milestones.map((m) => (
-            <div
-              key={m.id}
-              className="group flex items-center gap-3 border-b border-border py-2"
-            >
-              <Checkbox
-                checked={m.done}
-                onChange={() => toggleMilestone(project.id, m.id)}
-                label={m.title}
-              />
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`text-sm ${
-                    m.done ? "text-muted line-through" : "text-foreground"
-                  }`}
-                >
-                  {m.title}
-                </p>
-                <p className="text-[10px] uppercase tracking-wider text-muted">
-                  Weight {m.weight}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => deleteMilestone(project.id, m.id)}
-                className="text-[11px] uppercase tracking-wider text-muted opacity-0 transition-colors hover:text-accent group-hover:opacity-100"
+          {project.milestones.map((m) =>
+            editingMilestoneId === m.id ? (
+              <form
+                key={m.id}
+                onSubmit={submitEditMilestone}
+                className="flex items-center gap-2 border-b border-border py-2"
               >
-                Delete
-              </button>
-            </div>
-          ))}
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  aria-label="Milestone title"
+                  className="flex-1 rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-neutral-400"
+                  autoFocus
+                />
+                <input
+                  type="number"
+                  min={MILESTONE_WEIGHT_MIN}
+                  max={MILESTONE_WEIGHT_MAX}
+                  value={editWeight}
+                  onChange={(e) => setEditWeight(Number(e.target.value))}
+                  aria-label="Milestone weight"
+                  className="w-16 rounded-md border border-border px-2 py-2 text-sm text-foreground outline-none focus:border-neutral-400"
+                />
+                <button
+                  type="submit"
+                  className="rounded-md bg-neutral-800 px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditMilestone}
+                  className="text-[11px] uppercase tracking-wider text-muted transition-colors hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </form>
+            ) : (
+              <div
+                key={m.id}
+                className="group flex items-center gap-3 border-b border-border py-2"
+              >
+                <Checkbox
+                  checked={m.done}
+                  onChange={() => toggleMilestone(project.id, m.id)}
+                  label={m.title}
+                />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`text-sm ${
+                      m.done ? "text-muted line-through" : "text-foreground"
+                    }`}
+                  >
+                    {m.title}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted">
+                    Weight {m.weight}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => startEditMilestone(m.id, m.title, m.weight)}
+                  className="text-[11px] uppercase tracking-wider text-muted opacity-0 transition-colors hover:text-foreground group-hover:opacity-100"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteMilestone(project.id, m.id)}
+                  className="text-[11px] uppercase tracking-wider text-muted opacity-0 transition-colors hover:text-accent group-hover:opacity-100"
+                >
+                  Delete
+                </button>
+              </div>
+            ),
+          )}
           {project.milestones.length === 0 && (
             <p className="py-2 text-sm text-muted">No milestones yet.</p>
           )}
@@ -235,7 +334,8 @@ export default function ProjectDetail() {
           />
           <input
             type="number"
-            min={1}
+            min={MILESTONE_WEIGHT_MIN}
+            max={MILESTONE_WEIGHT_MAX}
             value={msWeight}
             onChange={(e) => setMsWeight(Number(e.target.value))}
             aria-label="Milestone weight"

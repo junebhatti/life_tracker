@@ -11,6 +11,14 @@ export type Milestone = {
   done: boolean;
 };
 
+export const MILESTONE_WEIGHT_MIN = 0;
+export const MILESTONE_WEIGHT_MAX = 10;
+
+export function clampMilestoneWeight(weight: number): number {
+  if (!Number.isFinite(weight)) return MILESTONE_WEIGHT_MIN;
+  return Math.min(MILESTONE_WEIGHT_MAX, Math.max(MILESTONE_WEIGHT_MIN, Math.round(weight)));
+}
+
 export type ChecklistRecurrence = "one-shot" | "weekly" | "monthly";
 
 export type ChecklistItem = {
