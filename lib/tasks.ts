@@ -95,15 +95,15 @@ export function seedTasks(): Task[] {
 
   return [
     { id: "t1", title: "Finish editing", due: key(0), starred: true, status: "open", createdAt: stamp },
-    { id: "t2", title: "Missoula Google Ads", projectId: "glacier-precast", due: key(0), starred: true, status: "open", createdAt: stamp },
-    { id: "t3", title: "Check oil Ford Ranger", projectId: "home", due: key(-3), recurrence: "Monthly", starred: false, status: "open", createdAt: stamp },
-    { id: "t4", title: "Setup Review Request System", projectId: "black-diamond", due: key(0), starred: false, status: "open", createdAt: stamp },
-    { id: "t5", title: "Audit Ads Performance", projectId: "black-diamond", due: key(0), recurrence: "Weekly", starred: false, status: "open", createdAt: stamp },
-    { id: "t6", title: "Next Door Post", projectId: "black-diamond", due: key(0), recurrence: "Weekly", starred: false, status: "open", createdAt: stamp },
-    { id: "t7", title: "Schedule BDS Social Posts", projectId: "black-diamond", due: key(1), recurrence: "Weekly", starred: false, status: "open", createdAt: stamp },
-    { id: "t8", title: "WordPress Plugin Review Topics", projectId: "jerad-wp", due: key(2), starred: false, status: "open", createdAt: stamp },
-    { id: "t9", title: "Draft monthly newsletter", projectId: "hill-media", due: key(4), starred: false, status: "open", createdAt: stamp },
-    { id: "t10", title: "Call insurance about claim", projectId: "home", starred: false, status: "open", createdAt: stamp },
-    { id: "t11", title: "Old onboarding doc cleanup", projectId: "hill-media", due: key(-10), starred: false, status: "done", createdAt: stamp, completedAt: stamp },
+    { id: "t2", title: "Missoula Google Ads", projectId: "fetter-pools", due: key(0), starred: true, status: "open", createdAt: stamp },
+    { id: "t3", title: "Check oil Ford Ranger", due: key(-3), recurrence: "Monthly", starred: false, status: "open", createdAt: stamp },
+    { id: "t4", title: "Setup Review Request System", projectId: "fetter-pools", due: key(0), starred: false, status: "open", createdAt: stamp },
+    { id: "t5", title: "Audit Ads Performance", projectId: "fetter-pools", due: key(0), recurrence: "Weekly", starred: false, status: "open", createdAt: stamp },
+    { id: "t6", title: "Next Door Post", due: key(0), recurrence: "Weekly", starred: false, status: "open", createdAt: stamp },
+    { id: "t7", title: "Schedule social posts", due: key(1), recurrence: "Weekly", starred: false, status: "open", createdAt: stamp },
+    { id: "t8", title: "WordPress Plugin Review Topics", due: key(2), starred: false, status: "open", createdAt: stamp },
+    { id: "t9", title: "Draft monthly newsletter", due: key(4), starred: false, status: "open", createdAt: stamp },
+    { id: "t10", title: "Call insurance about claim", starred: false, status: "open", createdAt: stamp },
+    { id: "t11", title: "Old onboarding doc cleanup", due: key(-10), starred: false, status: "done", createdAt: stamp, completedAt: stamp },
   ];
 }

@@ -1,20 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PROJECTS } from "@/lib/projects";
+import { useProjects } from "./ProjectStore";
 import { useTasks } from "./TaskStore";
 import type { TaskStatus } from "@/lib/tasks";
 
 type NewTaskFormProps = {
   onClose: () => void;
+  /** Pre-select a project (used when adding a task from a project page). */
+  defaultProjectId?: string;
 };
 
 /** Modal form for creating a task (title, project, due date, status, star). */
-export default function NewTaskForm({ onClose }: NewTaskFormProps) {
+export default function NewTaskForm({
+  onClose,
+  defaultProjectId,
+}: NewTaskFormProps) {
   const { addTask } = useTasks();
+  const { projects } = useProjects();
 
   const [title, setTitle] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [projectId, setProjectId] = useState(defaultProjectId ?? "");
   const [due, setDue] = useState("");
   const [recurrence, setRecurrence] = useState("");
   const [status, setStatus] = useState<TaskStatus>("open");
@@ -75,7 +81,7 @@ export default function NewTaskForm({ onClose }: NewTaskFormProps) {
               className="rounded-md border border-border px-2 py-2 text-sm text-foreground outline-none focus:border-neutral-400"
             >
               <option value="">No project</option>
-              {PROJECTS.map((p) => (
+              {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
