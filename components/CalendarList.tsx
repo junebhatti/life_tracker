@@ -26,7 +26,7 @@ export default function CalendarList() {
 
   const today = new Date();
   const windowEnd = new Date(today);
-  windowEnd.setDate(windowEnd.getDate() + WINDOW_DAYS - 1);
+  windowEnd.setDate(windowEnd.getDate() + WINDOW_DAYS);
   const rangeLabel = formatRangeLabel(today, windowEnd);
 
   useEffect(() => {

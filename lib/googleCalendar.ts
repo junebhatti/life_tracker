@@ -64,6 +64,37 @@ function dateKeyInTZ(date: Date, timeZone: string): string {
   return date.toLocaleDateString("en-CA", { timeZone });
 }
 
+/** Minutes to add to a UTC instant to get the wall-clock time in `timeZone`. */
+function timeZoneOffsetMinutes(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const asUTC = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  return (asUTC - date.getTime()) / 60_000;
+}
+
+/** UTC instant for local midnight on `dateKey` (YYYY-MM-DD) in `timeZone`. */
+function startOfDayUTC(dateKey: string, timeZone: string): Date {
+  const utcGuess = new Date(`${dateKey}T00:00:00Z`);
+  const offsetMinutes = timeZoneOffsetMinutes(utcGuess, timeZone);
+  return new Date(utcGuess.getTime() - offsetMinutes * 60_000);
+}
+
 function weekdayLabel(date: Date, timeZone: string): string {
   return date.toLocaleDateString("en-US", { timeZone, weekday: "short" });
 }
@@ -115,7 +146,18 @@ const MAX_UP_NEXT = 5;
 export async function fetchUpcomingEvents(maxResults = MAX_UP_NEXT): Promise<CalendarEvent[]> {
   const accessToken = await getAccessToken();
   const now = new Date();
-  const timeMax = new Date(now.getTime() + WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const todayKey = dateKeyInTZ(now, TIME_ZONE);
+
+  // Cover full calendar days through today+WINDOW_DAYS inclusive, not a
+  // rolling 7×24h span from the current instant — otherwise events later
+  // in the day on the final day get cut off whenever "now" is in the
+  // afternoon, and the same weekday one week out wouldn't be included.
+  const [wy, wm, wd] = todayKey.split("-").map(Number);
+  const windowEndKey = new Date(Date.UTC(wy, wm - 1, wd + WINDOW_DAYS + 1))
+    .toISOString()
+    .slice(0, 10);
+  const timeMax = startOfDayUTC(windowEndKey, TIME_ZONE);
 
   const params = new URLSearchParams({
     timeMin: now.toISOString(),
@@ -136,7 +178,6 @@ export async function fetchUpcomingEvents(maxResults = MAX_UP_NEXT): Promise<Cal
   }
 
   const data = (await res.json()) as { items?: GoogleEventItem[] };
-  const todayKey = dateKeyInTZ(now, TIME_ZONE);
 
   // singleEvents=true expands each recurring series (birthdays, weekly
   // 1:1s) into one item per upcoming occurrence. Keep only the soonest
