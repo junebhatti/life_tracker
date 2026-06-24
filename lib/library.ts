@@ -6,8 +6,16 @@ export type LibraryNote = {
   id: string;
   /** Path relative to the synced folder, e.g. "People/Calls/Jane Doe.md". */
   path: string;
+  /** From the Obsidian file — overwritten on every sync. */
   title: string;
+  /** From the Obsidian file — overwritten on every sync. */
   content: string;
+  /** Edited in the app. Sync never touches these, so an edit survives
+   *  re-syncing the same note from Obsidian — but it won't be reflected
+   *  back in the Obsidian file itself. Takes precedence over title/content
+   *  for display when set. */
+  manualTitle?: string;
+  manualContent?: string;
   /** Tags from the note's frontmatter — overwritten on every sync. */
   tags: string[];
   /** Tags added in the app. Sync never touches this, so they survive
@@ -82,14 +90,18 @@ function titleFromPath(path: string): string {
   return file.replace(/\.md$/i, "");
 }
 
-/** The top-level folder inside the synced vault, e.g.
- *  "MyVault/Quotes/Tony Robbins/Note.md" -> "Quotes". `folders[0]` is the
- *  synced root itself (whatever folder was picked), so the category is the
- *  next segment down, regardless of how deeply the note is nested beneath
- *  it. Undefined for notes sitting directly in the synced root. */
+/** The top-level folder a note belongs to, however it was synced:
+ *  - Synced the whole vault ("MyVault/Quotes/Tony Robbins/Note.md"):
+ *    folders[0] is the vault root itself, so the category is the next
+ *    segment down ("Quotes"), regardless of nesting beneath it.
+ *  - Synced one folder directly ("Quotes/Tony Robbins/Note.md", picked
+ *    "Quotes" itself in the folder browser): there's no vault-root segment
+ *    to skip, so the category is that folder's own name ("Quotes").
+ *  Undefined only for a note with no folder at all. */
 function categoryFromPath(path: string): string | undefined {
   const folders = path.split("/").slice(0, -1);
-  return folders.length > 1 ? folders[1] : undefined;
+  if (folders.length > 1) return folders[1];
+  return folders[0];
 }
 
 function isInPeopleFolder(path: string): boolean {

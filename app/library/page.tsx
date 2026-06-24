@@ -15,13 +15,22 @@ function formatNoteDate(value: string): string {
 }
 
 export default function LibraryPage() {
-  const { notes, hydrated, deleteNote, addManualTag, removeManualTag } =
-    useLibrary();
+  const {
+    notes,
+    hydrated,
+    deleteNote,
+    editNote,
+    addManualTag,
+    removeManualTag,
+  } = useLibrary();
   const { people } = usePeople();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState(ALL_CATEGORY);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newTag, setNewTag] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
 
   const peopleById = useMemo(
     () => new Map(people.map((p) => [p.id, p.name])),
@@ -40,8 +49,8 @@ export default function LibraryPage() {
       if (category !== ALL_CATEGORY && n.category !== category) return false;
       if (!q) return true;
       return (
-        n.title.toLowerCase().includes(q) ||
-        n.content.toLowerCase().includes(q) ||
+        (n.manualTitle ?? n.title).toLowerCase().includes(q) ||
+        (n.manualContent ?? n.content).toLowerCase().includes(q) ||
         n.tags.some((t) => t.toLowerCase().includes(q)) ||
         n.manualTags.some((t) => t.toLowerCase().includes(q))
       );
@@ -130,6 +139,10 @@ export default function LibraryPage() {
             {hydrated &&
               sorted.map((note) => {
                 const expanded = expandedId === note.id;
+                const editing = editingId === note.id;
+                const title = note.manualTitle ?? note.title;
+                const content = note.manualContent ?? note.content;
+                const edited = note.manualTitle != null || note.manualContent != null;
                 const linkedNames = note.personIds
                   .map((id) => peopleById.get(id))
                   .filter((n): n is string => !!n);
@@ -147,6 +160,7 @@ export default function LibraryPage() {
                         onClick={() => {
                           setExpandedId(expanded ? null : note.id);
                           setNewTag("");
+                          setEditingId(null);
                         }}
                         className="min-w-0 flex-1 text-left"
                       >
@@ -157,7 +171,12 @@ export default function LibraryPage() {
                             </span>
                           )}
                           <p className="text-sm font-medium text-foreground">
-                            {note.title}
+                            {title}
+                            {edited && (
+                              <span className="ml-2 text-[10px] font-normal uppercase tracking-wide text-muted">
+                                Edited
+                              </span>
+                            )}
                           </p>
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-wide text-muted">
@@ -187,9 +206,58 @@ export default function LibraryPage() {
                     </div>
                     {expanded && (
                       <div className="mt-3 flex flex-col gap-3">
-                        <pre className="whitespace-pre-wrap rounded-md bg-hover p-3 text-xs text-foreground">
-                          {note.content}
-                        </pre>
+                        {editing ? (
+                          <div className="flex flex-col gap-2">
+                            <input
+                              type="text"
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="w-full rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-neutral-400"
+                            />
+                            <textarea
+                              value={editContent}
+                              onChange={(e) => setEditContent(e.target.value)}
+                              rows={8}
+                              className="w-full rounded-md border border-border px-3 py-2 text-xs text-foreground outline-none focus:border-neutral-400"
+                            />
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  editNote(note.id, editTitle, editContent);
+                                  setEditingId(null);
+                                }}
+                                className="rounded-md bg-neutral-800 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingId(null)}
+                                className="text-[11px] uppercase tracking-wider text-muted transition-colors hover:text-foreground"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            <pre className="whitespace-pre-wrap rounded-md bg-hover p-3 text-xs text-foreground">
+                              {content}
+                            </pre>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingId(note.id);
+                                setEditTitle(title);
+                                setEditContent(content);
+                              }}
+                              className="self-start text-[11px] uppercase tracking-wider text-muted transition-colors hover:text-foreground"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        )}
                         <div className="flex flex-wrap items-center gap-2">
                           {note.manualTags.map((tag) => (
                             <span

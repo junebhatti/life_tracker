@@ -57,6 +57,8 @@ create table if not exists public.library_notes (
   content text not null default '',
   tags jsonb not null default '[]',
   manual_tags jsonb not null default '[]',
+  manual_title text,
+  manual_content text,
   category text,
   person_ids jsonb not null default '[]',
   source_modified_at timestamptz,
@@ -68,6 +70,8 @@ create table if not exists public.library_notes (
 -- In case library_notes was created before these two columns existed.
 alter table public.library_notes add column if not exists manual_tags jsonb not null default '[]';
 alter table public.library_notes add column if not exists category text;
+alter table public.library_notes add column if not exists manual_title text;
+alter table public.library_notes add column if not exists manual_content text;
 
 create index if not exists tasks_user_id_idx on public.tasks (user_id);
 create index if not exists projects_user_id_idx on public.projects (user_id);

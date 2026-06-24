@@ -18,6 +18,8 @@ type LibraryNoteRow = {
   path: string;
   title: string;
   content: string;
+  manual_title: string | null;
+  manual_content: string | null;
   tags: string[];
   manual_tags: string[];
   category: string | null;
@@ -33,6 +35,8 @@ function fromRow(row: LibraryNoteRow): LibraryNote {
     path: row.path,
     title: row.title,
     content: row.content,
+    manualTitle: row.manual_title ?? undefined,
+    manualContent: row.manual_content ?? undefined,
     tags: row.tags ?? [],
     manualTags: row.manual_tags ?? [],
     category: row.category ?? undefined,
@@ -62,6 +66,10 @@ type LibraryStore = {
   /** Upserts a batch of parsed notes by vault path: existing paths are
    *  updated in place, new paths are inserted. Never touches manualTags. */
   syncNotes: (notes: SyncNoteInput[]) => Promise<SyncSummary>;
+  /** Edits a note's title/body in the app. Stored separately from the
+   *  synced title/content, so it survives re-syncing — but it is one-way:
+   *  the edit is not written back to the Obsidian file. */
+  editNote: (noteId: string, title: string, content: string) => void;
   addManualTag: (noteId: string, tag: string) => void;
   removeManualTag: (noteId: string, tag: string) => void;
 };
@@ -218,6 +226,8 @@ export function LibraryStoreProvider({
             path: row.path,
             title: row.title,
             content: row.content,
+            manualTitle: existing?.manualTitle,
+            manualContent: existing?.manualContent,
             tags: row.tags,
             manualTags: existing?.manualTags ?? [],
             category: row.category ?? undefined,
@@ -231,6 +241,27 @@ export function LibraryStoreProvider({
       });
 
       return { created, updated };
+    },
+    [user],
+  );
+
+  const editNote = useCallback(
+    (noteId: string, title: string, content: string) => {
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === noteId
+            ? { ...n, manualTitle: title, manualContent: content }
+            : n,
+        ),
+      );
+      if (!user) return;
+      supabase
+        .from("library_notes")
+        .update({ manual_title: title, manual_content: content })
+        .eq("id", noteId)
+        .then(({ error }) => {
+          if (error) console.error("Failed to edit note", error);
+        });
     },
     [user],
   );
@@ -282,6 +313,7 @@ export function LibraryStoreProvider({
         hydrated,
         deleteNote,
         syncNotes,
+        editNote,
         addManualTag,
         removeManualTag,
       }}
