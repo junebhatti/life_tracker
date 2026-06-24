@@ -92,10 +92,10 @@ export default function ObsidianSync() {
         vault folder (or any subfolder) and its Markdown notes are synced
         into the Library. A note is linked to a person on the People page
         if either: it lives in a folder named{" "}
-        <code className="rounded bg-hover px-1">Calls and People</code> and
-        is named after them (e.g.{" "}
-        <code className="rounded bg-hover px-1">Jane Doe.md</code>), or it
-        has a <code className="rounded bg-hover px-1">person</code> /{" "}
+        <code className="rounded bg-hover px-1">Calls</code> and is named
+        after them (e.g.{" "}
+        <code className="rounded bg-hover px-1">People/Calls/Jane Doe.md</code>
+        ), or it has a <code className="rounded bg-hover px-1">person</code> /{" "}
         <code className="rounded bg-hover px-1">people</code> frontmatter
         field (e.g. <code className="rounded bg-hover px-1">person: Jane Doe</code>
         ). Re-run this any time you&apos;ve updated your notes.

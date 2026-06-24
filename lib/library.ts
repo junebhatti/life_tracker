@@ -4,7 +4,7 @@
 
 export type LibraryNote = {
   id: string;
-  /** Path relative to the synced folder, e.g. "Calls and People/Jane Doe.md". */
+  /** Path relative to the synced folder, e.g. "People/Calls/Jane Doe.md". */
   path: string;
   title: string;
   content: string;
@@ -28,10 +28,11 @@ export type ParsedNote = {
   sourceModifiedAt: string;
 };
 
-/** Folders where every note is about one person, named after them (e.g.
- *  "Calls and People/Jane Doe.md") — matched by folder name anywhere in the
- *  path, case-insensitively. */
-const PEOPLE_FOLDER_NAMES = ["calls and people"];
+/** A folder where every note is about one person, named after them (e.g.
+ *  "People/Calls/Jane Doe.md") — matched by folder name anywhere in the
+ *  path, case-insensitively, so it works whether the vault, "People", or
+ *  "Calls" itself is the folder picked to sync. */
+const PEOPLE_FOLDER_NAMES = ["calls"];
 
 /** Parses an Obsidian-style note: YAML frontmatter (title, tags, person/people)
  *  plus body content. Falls back to the filename when there's no title field.
