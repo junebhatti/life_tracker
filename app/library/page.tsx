@@ -8,6 +8,12 @@ import { usePeople } from "@/components/PeopleStore";
 
 const ALL_CATEGORY = "All";
 
+function formatNoteDate(value: string): string {
+  return new Date(value)
+    .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    .toUpperCase();
+}
+
 export default function LibraryPage() {
   const { notes, hydrated, deleteNote, addManualTag, removeManualTag } =
     useLibrary();
@@ -43,7 +49,12 @@ export default function LibraryPage() {
   }, [notes, query, category]);
 
   const sorted = useMemo(
-    () => [...filtered].sort((a, b) => b.syncedAt.localeCompare(a.syncedAt)),
+    () =>
+      [...filtered].sort((a, b) =>
+        (b.sourceModifiedAt ?? b.createdAt).localeCompare(
+          a.sourceModifiedAt ?? a.createdAt,
+        ),
+      ),
     [filtered],
   );
 
@@ -122,6 +133,9 @@ export default function LibraryPage() {
                 const linkedNames = note.personIds
                   .map((id) => peopleById.get(id))
                   .filter((n): n is string => !!n);
+                const dateLabel = formatNoteDate(
+                  note.sourceModifiedAt ?? note.createdAt,
+                );
                 return (
                   <div
                     key={note.id}
@@ -160,6 +174,9 @@ export default function LibraryPage() {
                           ))}
                         </div>
                       </button>
+                      <span className="shrink-0 text-[11px] uppercase tracking-wide text-muted">
+                        {dateLabel}
+                      </span>
                       <button
                         type="button"
                         onClick={() => deleteNote(note.id)}

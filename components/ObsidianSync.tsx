@@ -202,9 +202,11 @@ export default function ObsidianSync() {
     <div className="rounded-lg border border-border p-4">
       <h2 className="text-sm font-medium text-foreground">Obsidian vault</h2>
       <p className="mt-1 text-sm text-muted">
-        Pick your vault folder (or any subfolder) and its Markdown notes sync
-        into the Library, grouped into tabs by whichever folder each note sits
-        directly inside. A note is linked to a person on the People page if it
+        Pick your vault folder and its Markdown notes sync into the Library,
+        grouped into tabs by the top-level folder each note lives under (e.g.
+        everything inside &quot;Quotes/&quot;, however deeply nested, becomes
+        the &quot;Quotes&quot; tab). A note is linked to a person on the
+        People page if it
         lives in a folder named{" "}
         <code className="rounded bg-hover px-1">Calls</code> and is named after
         them (e.g.{" "}
