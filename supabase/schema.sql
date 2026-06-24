@@ -55,6 +55,11 @@ create table if not exists public.library_notes (
   title text not null,
   content text not null default '',
   tags jsonb not null default '[]',
+  -- Tags added in the app, not touched by sync, so they survive re-syncing.
+  manual_tags jsonb not null default '[]',
+  -- The folder the note sits directly inside, used to group the Library
+  -- into tabs.
+  category text,
   person_ids jsonb not null default '[]',
   source_modified_at timestamptz,
   synced_at timestamptz not null default now(),

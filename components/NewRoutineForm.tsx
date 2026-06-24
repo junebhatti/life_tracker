@@ -68,43 +68,41 @@ export default function NewRoutineForm({ onClose }: NewRoutineFormProps) {
           className="mt-3 w-full resize-none rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted focus:border-neutral-400"
         />
 
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted">
-              Time of day
-            </span>
-            <div className="flex rounded-md border border-border p-0.5">
-              {ROUTINE_PERIODS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPeriod(p)}
-                  className={`flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors ${
-                    period === p
-                      ? "bg-neutral-800 text-white"
-                      : "text-muted hover:text-foreground"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
+        <div className="mt-4 flex flex-col gap-1">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted">
+            Time of day
+          </span>
+          <div className="flex flex-wrap gap-1 rounded-md border border-border p-0.5">
+            {ROUTINE_PERIODS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p)}
+                className={`flex-1 rounded px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
+                  period === p
+                    ? "bg-neutral-800 text-white"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
           </div>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted">
-              Streak goal
-            </span>
-            <input
-              type="number"
-              min={0}
-              value={streakGoal}
-              onChange={(e) => setStreakGoal(e.target.value)}
-              placeholder="e.g. 30 days"
-              className="rounded-md border border-border px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted focus:border-neutral-400"
-            />
-          </label>
         </div>
+
+        <label className="mt-4 flex max-w-[12rem] flex-col gap-1">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted">
+            Streak goal
+          </span>
+          <input
+            type="number"
+            min={0}
+            value={streakGoal}
+            onChange={(e) => setStreakGoal(e.target.value)}
+            placeholder="e.g. 30 days"
+            className="rounded-md border border-border px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted focus:border-neutral-400"
+          />
+        </label>
 
         <div className="mt-6 flex justify-end gap-2">
           <button

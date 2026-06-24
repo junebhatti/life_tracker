@@ -4,11 +4,18 @@
 
 export type LibraryNote = {
   id: string;
-  /** Path relative to the synced folder, e.g. "People/Jane Doe/2024-03-01 call.md". */
+  /** Path relative to the synced folder, e.g. "People/Calls/Jane Doe.md". */
   path: string;
   title: string;
   content: string;
+  /** Tags from the note's frontmatter — overwritten on every sync. */
   tags: string[];
+  /** Tags added in the app. Sync never touches this, so they survive
+   *  re-syncing the same note from Obsidian. */
+  manualTags: string[];
+  /** The folder the note sits directly inside, used to group the Library
+   *  into tabs (e.g. "Quotes/Tony Robbins.md" -> category "Quotes"). */
+  category?: string;
   /** Person IDs this note is linked to, resolved at sync time from a
    *  `person`/`people` frontmatter field. */
   personIds: string[];
@@ -23,30 +30,48 @@ export type ParsedNote = {
   title: string;
   content: string;
   tags: string[];
-  /** Raw names from the note's `person`/`people` frontmatter, resolved to
-   *  Person IDs at sync time. */
+  category?: string;
+  /** Names this note is linked to, resolved to Person IDs at sync time. */
   personNames: string[];
   sourceModifiedAt: string;
 };
 
+/** A folder where every note is about one person, named after them (e.g.
+ *  "People/Calls/Jane Doe.md") — matched by folder name anywhere in the
+ *  path, case-insensitively, so it works whether the vault, "People", or
+ *  "Calls" itself is the folder picked to sync. */
+const PEOPLE_FOLDER_NAMES = ["calls"];
+
 /** Parses an Obsidian-style note: YAML frontmatter (title, tags, person/people)
- *  plus body content. Falls back to the filename when there's no title field. */
+ *  plus body content. Falls back to the filename when there's no title field.
+ *  Notes inside a people folder (see PEOPLE_FOLDER_NAMES) are linked to the
+ *  person named by the filename, even without frontmatter. */
 export function parseMarkdownNote(
   path: string,
   raw: string,
   sourceModifiedAt: string,
 ): ParsedNote {
   const { data, content } = parseFrontmatter(raw);
+  const filenameTitle = titleFromPath(path);
   const title =
     typeof data.title === "string" && data.title.trim()
       ? data.title.trim()
-      : titleFromPath(path);
+      : filenameTitle;
+
+  const personNames = normalizeStringArray(
+    data.person ?? data.people ?? data.persons,
+  );
+  if (isInPeopleFolder(path) && !personNames.includes(filenameTitle)) {
+    personNames.push(filenameTitle);
+  }
+
   return {
     path,
     title,
     content: content.trim(),
     tags: normalizeStringArray(data.tags),
-    personNames: normalizeStringArray(data.person ?? data.people ?? data.persons),
+    category: categoryFromPath(path),
+    personNames,
     sourceModifiedAt,
   };
 }
@@ -54,6 +79,20 @@ export function parseMarkdownNote(
 function titleFromPath(path: string): string {
   const file = path.split("/").pop() ?? path;
   return file.replace(/\.md$/i, "");
+}
+
+/** The folder a note sits directly inside, e.g. "Quotes/Tony Robbins.md" ->
+ *  "Quotes". Undefined if the note has no parent folder. */
+function categoryFromPath(path: string): string | undefined {
+  const folders = path.split("/").slice(0, -1);
+  return folders.length > 0 ? folders[folders.length - 1] : undefined;
+}
+
+function isInPeopleFolder(path: string): boolean {
+  const folders = path.split("/").slice(0, -1);
+  return folders.some((folder) =>
+    PEOPLE_FOLDER_NAMES.includes(folder.toLowerCase()),
+  );
 }
 
 function normalizeStringArray(value: unknown): string[] {
