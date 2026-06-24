@@ -11,9 +11,23 @@ type EventsResponse = {
   detail?: string;
 };
 
+/** Matches the 7-day window the API queries Google Calendar for. */
+const WINDOW_DAYS = 7;
+
+function formatRangeLabel(start: Date, end: Date) {
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
 /** Upcoming events from the connected Google Calendar, in an agenda list. */
 export default function CalendarList() {
   const [state, setState] = useState<EventsResponse | null>(null);
+
+  const today = new Date();
+  const windowEnd = new Date(today);
+  windowEnd.setDate(windowEnd.getDate() + WINDOW_DAYS - 1);
+  const rangeLabel = formatRangeLabel(today, windowEnd);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +49,7 @@ export default function CalendarList() {
   return (
     <section>
       <SectionHeading
-        title="Up Next"
+        title={`Up Next · ${rangeLabel}`}
         action={
           <a
             href="https://calendar.google.com"
