@@ -7,6 +7,7 @@ import type { CalendarEvent } from "@/lib/data";
 type EventsResponse = {
   events: CalendarEvent[];
   configured: boolean;
+  accountsConnected: number;
   error?: string;
   detail?: string;
 };
@@ -38,7 +39,12 @@ export default function CalendarList() {
       })
       .catch(() => {
         if (!cancelled) {
-          setState({ events: [], configured: true, error: "Couldn't load calendar events." });
+          setState({
+            events: [],
+            configured: true,
+            accountsConnected: 0,
+            error: "Couldn't load calendar events.",
+          });
         }
       });
     return () => {
@@ -126,6 +132,19 @@ export default function CalendarList() {
             </div>
           ))}
         </div>
+      )}
+
+      {state && state.configured && state.accountsConnected < 2 && (
+        <p className="px-2 py-2 text-xs text-muted">
+          Missing events from another calendar?{" "}
+          <a
+            href="/api/calendar/auth?account=2"
+            className="text-foreground underline underline-offset-2"
+          >
+            Connect a second Google account
+          </a>
+          .
+        </p>
       )}
     </section>
   );
