@@ -7,13 +7,28 @@ import type { CalendarEvent } from "@/lib/data";
 type EventsResponse = {
   events: CalendarEvent[];
   configured: boolean;
+  accountsConnected: number;
   error?: string;
   detail?: string;
 };
 
+/** Matches the 7-day window the API queries Google Calendar for. */
+const WINDOW_DAYS = 7;
+
+function formatRangeLabel(start: Date, end: Date) {
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
 /** Upcoming events from the connected Google Calendar, in an agenda list. */
 export default function CalendarList() {
   const [state, setState] = useState<EventsResponse | null>(null);
+
+  const today = new Date();
+  const windowEnd = new Date(today);
+  windowEnd.setDate(windowEnd.getDate() + WINDOW_DAYS);
+  const rangeLabel = formatRangeLabel(today, windowEnd);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,7 +39,12 @@ export default function CalendarList() {
       })
       .catch(() => {
         if (!cancelled) {
-          setState({ events: [], configured: true, error: "Couldn't load calendar events." });
+          setState({
+            events: [],
+            configured: true,
+            accountsConnected: 0,
+            error: "Couldn't load calendar events.",
+          });
         }
       });
     return () => {
@@ -35,7 +55,7 @@ export default function CalendarList() {
   return (
     <section>
       <SectionHeading
-        title="Up Next"
+        title={`Up Next · ${rangeLabel}`}
         action={
           <a
             href="https://calendar.google.com"
@@ -112,6 +132,19 @@ export default function CalendarList() {
             </div>
           ))}
         </div>
+      )}
+
+      {state && state.configured && state.accountsConnected < 2 && (
+        <p className="px-2 py-2 text-xs text-muted">
+          Missing events from another calendar?{" "}
+          <a
+            href="/api/calendar/auth?account=2"
+            className="text-foreground underline underline-offset-2"
+          >
+            Connect a second Google account
+          </a>
+          .
+        </p>
       )}
     </section>
   );

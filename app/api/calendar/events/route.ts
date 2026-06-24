@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
-import { fetchUpcomingEvents, googleCalendarConfigured } from "@/lib/googleCalendar";
+import {
+  connectedAccountCount,
+  fetchUpcomingEvents,
+  googleCalendarConfigured,
+} from "@/lib/googleCalendar";
 
 export async function GET() {
   if (!googleCalendarConfigured()) {
-    return NextResponse.json({ events: [], configured: false });
+    return NextResponse.json({ events: [], configured: false, accountsConnected: 0 });
   }
+
+  const accountsConnected = connectedAccountCount();
 
   try {
     const events = await fetchUpcomingEvents();
-    return NextResponse.json({ events, configured: true });
+    return NextResponse.json({ events, configured: true, accountsConnected });
   } catch (error) {
     console.error("Google Calendar fetch failed:", error);
     const detail = error instanceof Error ? error.message : String(error);
@@ -16,6 +22,7 @@ export async function GET() {
       {
         events: [],
         configured: true,
+        accountsConnected,
         error: "Couldn't load calendar events.",
         detail,
       },

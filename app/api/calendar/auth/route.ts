@@ -11,6 +11,10 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Visit with ?account=2 to mint a token for a second Google account
+  // instead of overwriting the first; the callback echoes this back via
+  // `state` so it knows which GOOGLE_REFRESH_TOKEN(_2) to ask you to set.
+  const account = request.nextUrl.searchParams.get("account") === "2" ? "2" : "1";
   const redirectUri = new URL("/api/calendar/callback", request.url).toString();
 
   const params = new URLSearchParams({
@@ -20,6 +24,7 @@ export async function GET(request: NextRequest) {
     access_type: "offline",
     prompt: "consent",
     scope: SCOPE,
+    state: account,
   });
 
   return NextResponse.redirect(

@@ -26,6 +26,8 @@ function htmlResponse(message: string, token?: string) {
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const oauthError = request.nextUrl.searchParams.get("error");
+  const account = request.nextUrl.searchParams.get("state") === "2" ? "2" : "1";
+  const envVarName = account === "2" ? "GOOGLE_REFRESH_TOKEN_2" : "GOOGLE_REFRESH_TOKEN";
 
   if (oauthError) {
     return htmlResponse(`Google declined the request: ${oauthError}`);
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
   }
 
   return htmlResponse(
-    "Connected. Copy this value into the <strong>GOOGLE_REFRESH_TOKEN</strong> environment variable " +
+    `Connected. Copy this value into the <strong>${envVarName}</strong> environment variable ` +
       "in your Vercel project settings, then redeploy:",
     tokenData.refresh_token,
   );
