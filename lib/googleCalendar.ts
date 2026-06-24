@@ -47,7 +47,10 @@ async function getAccessToken(): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to refresh Google access token (${res.status})`);
+    const detail = await res.text();
+    throw new Error(
+      `Failed to refresh Google access token (${res.status}): ${detail}`,
+    );
   }
 
   const data = (await res.json()) as TokenResponse;
@@ -114,7 +117,8 @@ export async function fetchUpcomingEvents(maxResults = 10): Promise<CalendarEven
   );
 
   if (!res.ok) {
-    throw new Error(`Failed to fetch calendar events (${res.status})`);
+    const detail = await res.text();
+    throw new Error(`Failed to fetch calendar events (${res.status}): ${detail}`);
   }
 
   const data = (await res.json()) as { items?: GoogleEventItem[] };
