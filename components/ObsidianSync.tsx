@@ -20,9 +20,12 @@ type Result = {
   updated: number;
   linkedToPeople: number;
   newPeople: number;
+  skipped: number;
 };
 
 const LAST_SYNCED_KEY = "obsidian_last_synced_at";
+const INCLUDED_FOLDERS_KEY = "obsidian_included_folders";
+const AVAILABLE_FOLDERS_KEY = "obsidian_available_folders";
 
 type PickerWindow = Window & {
   showDirectoryPicker: (opts?: {
@@ -52,13 +55,49 @@ export default function ObsidianSync() {
   const [error, setError] = useState<string | null>(null);
   const didAutoSync = useRef(false);
 
-  // Restore the last-sync time shown in the UI.
+  // Which top-level folders to sync. null means "no filter yet" (sync
+  // everything) — the default until the user unchecks something.
+  const [availableFolders, setAvailableFolders] = useState<string[]>([]);
+  const [includedFolders, setIncludedFolders] = useState<Set<string> | null>(
+    null,
+  );
+
+  // Restore the last-sync time and folder selection shown in the UI.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLastSyncedAt(localStorage.getItem(LAST_SYNCED_KEY));
+    const savedAvailable = localStorage.getItem(AVAILABLE_FOLDERS_KEY);
+    if (savedAvailable) {
+      try {
+        setAvailableFolders(JSON.parse(savedAvailable) as string[]);
+      } catch {
+        // ignore malformed value
+      }
+    }
+    const savedIncluded = localStorage.getItem(INCLUDED_FOLDERS_KEY);
+    if (savedIncluded) {
+      try {
+        setIncludedFolders(new Set(JSON.parse(savedIncluded) as string[]));
+      } catch {
+        // ignore malformed value
+      }
+    }
   }, []);
 
-  /** Parse a batch of Markdown files and upsert them into the Library. */
+  const toggleFolder = (name: string) => {
+    setIncludedFolders((prev) => {
+      const next = new Set(prev ?? availableFolders);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      localStorage.setItem(INCLUDED_FOLDERS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  /** Parse a batch of Markdown files and upsert them into the Library.
+   *  Always scans every file so the folder checklist stays accurate, but
+   *  only syncs notes from checked folders — unchecked folders are skipped,
+   *  not deleted, so re-checking one later picks its notes back up. */
   const processFiles = async (files: { path: string; file: File }[]) => {
     const mdFiles = files.filter(
       (f) =>
@@ -75,12 +114,22 @@ export default function ObsidianSync() {
       ),
     );
 
+    const categories = Array.from(
+      new Set(parsed.map((n) => n.category).filter((c): c is string => !!c)),
+    ).sort((a, b) => a.localeCompare(b));
+    setAvailableFolders(categories);
+    localStorage.setItem(AVAILABLE_FOLDERS_KEY, JSON.stringify(categories));
+
+    const included = parsed.filter(
+      (n) => !includedFolders || !n.category || includedFolders.has(n.category),
+    );
+
     const personNames = Array.from(
-      new Set(parsed.flatMap((n) => n.personNames)),
+      new Set(included.flatMap((n) => n.personNames)),
     );
     const { idsByName, createdNames } = await ensurePeopleByName(personNames);
 
-    const rows = parsed.map((n) => ({
+    const rows = included.map((n) => ({
       path: n.path,
       title: n.title,
       content: n.content,
@@ -103,6 +152,7 @@ export default function ObsidianSync() {
       updated: summary.updated,
       linkedToPeople: rows.filter((r) => r.personIds.length > 0).length,
       newPeople: createdNames.length,
+      skipped: parsed.length - included.length,
     });
   };
 
@@ -295,13 +345,45 @@ export default function ObsidianSync() {
         </>
       )}
 
+      {availableFolders.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
+            Folders to sync
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {availableFolders.map((folder) => {
+              const checked = !includedFolders || includedFolders.has(folder);
+              return (
+                <label
+                  key={folder}
+                  className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleFolder(folder)}
+                    className="accent-neutral-800"
+                  />
+                  {folder}
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-xs text-muted">
+            Unchecked folders are skipped on your next sync. Notes already in
+            the Library from them stay put until you delete them there.
+          </p>
+        </div>
+      )}
+
       {lastSyncedLabel && (
         <p className="mt-2 text-xs text-muted">Last synced {lastSyncedLabel}.</p>
       )}
       {result && (
         <p className="mt-1 text-xs text-muted">
           Scanned {result.scanned} note{result.scanned === 1 ? "" : "s"} ·{" "}
-          {result.created} new, {result.updated} updated ·{" "}
+          {result.created} new, {result.updated} updated
+          {result.skipped > 0 ? `, ${result.skipped} skipped` : ""} ·{" "}
           {result.linkedToPeople} linked to people
           {result.newPeople > 0 ? ` (${result.newPeople} new)` : ""}.
         </p>
