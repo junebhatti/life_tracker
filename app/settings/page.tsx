@@ -1,6 +1,7 @@
 import Sidebar from "@/components/Sidebar";
 import CalendarIntegrationStatus from "@/components/CalendarIntegrationStatus";
 import ObsidianSync from "@/components/ObsidianSync";
+import SessionStatus from "@/components/SessionStatus";
 
 export default function SettingsPage() {
   return (
@@ -19,6 +20,7 @@ export default function SettingsPage() {
           </p>
 
           <div className="mt-8 flex flex-col gap-4">
+            <SessionStatus />
             <CalendarIntegrationStatus />
             <ObsidianSync />
           </div>
