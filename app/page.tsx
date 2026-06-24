@@ -6,7 +6,10 @@ import SectionHeading from "@/components/SectionHeading";
 import TaskRow from "@/components/TaskRow";
 import CalendarList from "@/components/CalendarList";
 import RoutineTracker from "@/components/RoutineTracker";
+import NewTaskForm from "@/components/NewTaskForm";
 import { useTasks } from "@/components/TaskStore";
+import { useState } from "react";
+import type { Task } from "@/lib/tasks";
 
 function formatToday(date: Date) {
   return date.toLocaleDateString("en-US", {
@@ -32,6 +35,7 @@ function TaskSkeleton({ rows }: { rows: number }) {
 
 export default function TodayPage() {
   const { tasks, hydrated, pendingIds, toggleComplete, toggleStar } = useTasks();
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const today = new Date();
 
@@ -75,6 +79,7 @@ export default function TodayPage() {
                         pending={pendingIds.includes(task.id)}
                         onToggleComplete={toggleComplete}
                         onToggleStar={toggleStar}
+                        onEdit={setEditingTask}
                       />
                     ))}
                     {topThree.length < 3 && (
@@ -121,6 +126,7 @@ export default function TodayPage() {
                         pending={pendingIds.includes(task.id)}
                         onToggleComplete={toggleComplete}
                         onToggleStar={toggleStar}
+                        onEdit={setEditingTask}
                       />
                     ))}
                     {otherOpen.length === 0 && (
@@ -147,6 +153,10 @@ export default function TodayPage() {
           </div>
         </div>
       </main>
+
+      {editingTask && (
+        <NewTaskForm task={editingTask} onClose={() => setEditingTask(null)} />
+      )}
     </div>
   );
 }

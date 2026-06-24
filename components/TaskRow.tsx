@@ -9,6 +9,8 @@ type TaskRowProps = {
   onToggleComplete: (id: string) => void;
   /** When provided, a clickable star is shown (toggles "Top 3 for Today"). */
   onToggleStar?: (id: string) => void;
+  /** When provided, an "Edit" button is shown that hands back the task. */
+  onEdit?: (task: Task) => void;
   /** Checked but within the grace period before committing to done. */
   pending?: boolean;
 };
@@ -18,6 +20,7 @@ export default function TaskRow({
   task,
   onToggleComplete,
   onToggleStar,
+  onEdit,
   pending = false,
 }: TaskRowProps) {
   const { getProject } = useProjects();
@@ -70,6 +73,16 @@ export default function TaskRow({
           </div>
         )}
       </div>
+
+      {onEdit && (
+        <button
+          type="button"
+          onClick={() => onEdit(task)}
+          className="shrink-0 text-[11px] uppercase tracking-wider text-muted opacity-0 transition-colors hover:text-foreground group-hover:opacity-100"
+        >
+          Edit
+        </button>
+      )}
 
       {onToggleStar && (
         <button

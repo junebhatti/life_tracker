@@ -8,6 +8,7 @@ import TaskRow from "./TaskRow";
 import NewTaskForm from "./NewTaskForm";
 import { useProjects } from "./ProjectStore";
 import { useTasks } from "./TaskStore";
+import type { Task } from "@/lib/tasks";
 import {
   MILESTONE_WEIGHT_MAX,
   MILESTONE_WEIGHT_MIN,
@@ -79,6 +80,7 @@ export default function ProjectDetail() {
   const [actMinutes, setActMinutes] = useState("");
   // New task modal
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const project = getProject(id);
 
@@ -371,6 +373,7 @@ export default function ProjectDetail() {
               pending={pendingIds.includes(task.id)}
               onToggleComplete={toggleComplete}
               onToggleStar={toggleStar}
+              onEdit={setEditingTask}
             />
           ))}
           {openTasks.length === 0 && (
@@ -543,6 +546,9 @@ export default function ProjectDetail() {
           defaultProjectId={project.id}
           onClose={() => setShowTaskForm(false)}
         />
+      )}
+      {editingTask && (
+        <NewTaskForm task={editingTask} onClose={() => setEditingTask(null)} />
       )}
     </div>
   );

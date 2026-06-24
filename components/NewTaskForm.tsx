@@ -3,28 +3,35 @@
 import { useEffect, useState } from "react";
 import { useProjects } from "./ProjectStore";
 import { useTasks } from "./TaskStore";
-import type { TaskStatus } from "@/lib/tasks";
+import type { Task, TaskStatus } from "@/lib/tasks";
 
 type NewTaskFormProps = {
   onClose: () => void;
   /** Pre-select a project (used when adding a task from a project page). */
   defaultProjectId?: string;
+  /** When provided, the form edits this task instead of creating a new one. */
+  task?: Task;
 };
 
-/** Modal form for creating a task (title, project, due date, status, star). */
+/** Modal form for creating or editing a task (title, project, due, status, star). */
 export default function NewTaskForm({
   onClose,
   defaultProjectId,
+  task,
 }: NewTaskFormProps) {
-  const { addTask } = useTasks();
+  const { addTask, updateTask } = useTasks();
   const { projects } = useProjects();
 
-  const [title, setTitle] = useState("");
-  const [projectId, setProjectId] = useState(defaultProjectId ?? "");
-  const [due, setDue] = useState("");
-  const [recurrence, setRecurrence] = useState("");
-  const [status, setStatus] = useState<TaskStatus>("open");
-  const [starred, setStarred] = useState(false);
+  const editing = !!task;
+
+  const [title, setTitle] = useState(task?.title ?? "");
+  const [projectId, setProjectId] = useState(
+    task?.projectId ?? defaultProjectId ?? "",
+  );
+  const [due, setDue] = useState(task?.due ?? "");
+  const [recurrence, setRecurrence] = useState(task?.recurrence ?? "");
+  const [status, setStatus] = useState<TaskStatus>(task?.status ?? "open");
+  const [starred, setStarred] = useState(task?.starred ?? false);
 
   // Close on Escape.
   useEffect(() => {
@@ -38,14 +45,29 @@ export default function NewTaskForm({
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    addTask({
-      title,
-      projectId: projectId || undefined,
-      due: due || undefined,
-      recurrence: recurrence.trim() || undefined,
-      status,
-      starred,
-    });
+    if (editing) {
+      updateTask(task.id, {
+        title: title.trim(),
+        projectId: projectId || undefined,
+        due: due || undefined,
+        recurrence: recurrence.trim() || undefined,
+        status,
+        starred,
+        completedAt:
+          status === "done"
+            ? task.completedAt ?? new Date().toISOString()
+            : undefined,
+      });
+    } else {
+      addTask({
+        title,
+        projectId: projectId || undefined,
+        due: due || undefined,
+        recurrence: recurrence.trim() || undefined,
+        status,
+        starred,
+      });
+    }
     onClose();
   };
 
@@ -59,7 +81,9 @@ export default function NewTaskForm({
         onSubmit={submit}
         className="w-full max-w-lg rounded-xl border border-border bg-background p-6 shadow-xl"
       >
-        <h2 className="mb-4 text-lg font-semibold text-foreground">New task</h2>
+        <h2 className="mb-4 text-lg font-semibold text-foreground">
+          {editing ? "Edit task" : "New task"}
+        </h2>
 
         <input
           autoFocus
@@ -160,7 +184,7 @@ export default function NewTaskForm({
             disabled={!title.trim()}
             className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
           >
-            Add task
+            {editing ? "Save" : "Add task"}
           </button>
         </div>
       </form>

@@ -36,6 +36,7 @@ export default function TasksWorkspace() {
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   // Open the new-task form immediately when arriving via /tasks?new=1 (from Today).
   const [showForm, setShowForm] = useState(searchParams.get("new") === "1");
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const visible = useMemo(() => {
     return tasks.filter((t) => {
@@ -190,6 +191,7 @@ export default function TasksWorkspace() {
                         pending={pendingIds.includes(task.id)}
                         onToggleComplete={toggleComplete}
                         onToggleStar={toggleStar}
+                        onEdit={setEditingTask}
                       />
                     ))}
                   </div>
@@ -234,6 +236,12 @@ export default function TasksWorkspace() {
       )}
 
       {showForm && <NewTaskForm onClose={() => setShowForm(false)} />}
+      {editingTask && (
+        <NewTaskForm
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+        />
+      )}
     </div>
   );
 }
