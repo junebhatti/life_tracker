@@ -107,13 +107,17 @@ function toCalendarEvent(item: GoogleEventItem, todayKey: string): CalendarEvent
 
 /** How many raw instances to pull before deduping recurring series down to maxResults. */
 const FETCH_POOL_SIZE = 50;
+/** Only show what's coming up soon, not events arbitrarily far in the future. */
+const WINDOW_DAYS = 5;
 
-export async function fetchUpcomingEvents(maxResults = 10): Promise<CalendarEvent[]> {
+export async function fetchUpcomingEvents(maxResults = 50): Promise<CalendarEvent[]> {
   const accessToken = await getAccessToken();
   const now = new Date();
+  const timeMax = new Date(now.getTime() + WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const params = new URLSearchParams({
     timeMin: now.toISOString(),
+    timeMax: timeMax.toISOString(),
     singleEvents: "true",
     orderBy: "startTime",
     maxResults: String(FETCH_POOL_SIZE),
