@@ -7,10 +7,16 @@ import { useLibrary } from "@/components/LibraryStore";
 
 export default function PeoplePage() {
   const { people, hydrated, addPerson, deletePerson } = usePeople();
-  const { notes } = useLibrary();
+  const { notes, editNote } = useLibrary();
   const [name, setName] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
 
+  // Group notes under each person. Duplicate rows left over from syncing the
+  // vault under two different path prefixes are collapsed by content, so each
+  // call note appears once.
   const notesByPersonId = useMemo(() => {
     const map = new Map<string, typeof notes>();
     for (const note of notes) {
@@ -19,6 +25,18 @@ export default function PeoplePage() {
         if (existing) existing.push(note);
         else map.set(personId, [note]);
       }
+    }
+    for (const [personId, list] of map) {
+      const seen = new Set<string>();
+      map.set(
+        personId,
+        list.filter((n) => {
+          const key = `${n.manualTitle ?? n.title} ${n.manualContent ?? n.content}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }),
+      );
     }
     return map;
   }, [notes]);
@@ -98,9 +116,10 @@ export default function PeoplePage() {
                     <div className="flex items-start gap-3">
                       <button
                         type="button"
-                        onClick={() =>
-                          setExpandedId(expanded ? null : person.id)
-                        }
+                        onClick={() => {
+                          setExpandedId(expanded ? null : person.id);
+                          setEditingNoteId(null);
+                        }}
                         className="min-w-0 flex-1 text-left"
                       >
                         <p className="text-sm font-medium text-foreground">
@@ -128,19 +147,84 @@ export default function PeoplePage() {
                             No linked notes yet.
                           </p>
                         ) : (
-                          linkedNotes.map((note) => (
-                            <div
-                              key={note.id}
-                              className="rounded-md bg-hover p-3"
-                            >
-                              <p className="text-xs font-medium text-foreground">
-                                {note.title}
-                              </p>
-                              <p className="mt-1 whitespace-pre-wrap text-xs text-muted">
-                                {note.content}
-                              </p>
-                            </div>
-                          ))
+                          linkedNotes.map((note) => {
+                            const noteTitle = note.manualTitle ?? note.title;
+                            const noteContent =
+                              note.manualContent ?? note.content;
+                            const editingNote = editingNoteId === note.id;
+                            return (
+                              <div
+                                key={note.id}
+                                className="rounded-md bg-hover p-3"
+                              >
+                                {editingNote ? (
+                                  <div className="flex flex-col gap-2">
+                                    <input
+                                      type="text"
+                                      value={editTitle}
+                                      onChange={(e) =>
+                                        setEditTitle(e.target.value)
+                                      }
+                                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground outline-none focus:border-neutral-400"
+                                    />
+                                    <textarea
+                                      value={editContent}
+                                      onChange={(e) =>
+                                        setEditContent(e.target.value)
+                                      }
+                                      rows={6}
+                                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-neutral-400"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          editNote(
+                                            note.id,
+                                            editTitle,
+                                            editContent,
+                                          );
+                                          setEditingNoteId(null);
+                                        }}
+                                        className="rounded-md bg-neutral-800 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingNoteId(null)}
+                                        className="text-[11px] uppercase tracking-wider text-muted transition-colors hover:text-foreground"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="group/note flex items-start gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-medium text-foreground">
+                                        {noteTitle}
+                                      </p>
+                                      <p className="mt-1 whitespace-pre-wrap text-xs text-muted">
+                                        {noteContent}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingNoteId(note.id);
+                                        setEditTitle(noteTitle);
+                                        setEditContent(noteContent);
+                                      }}
+                                      className="shrink-0 text-[11px] uppercase tracking-wider text-muted opacity-0 transition-colors hover:text-foreground group-hover/note:opacity-100"
+                                    >
+                                      Edit
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
                         )}
                       </div>
                     )}
