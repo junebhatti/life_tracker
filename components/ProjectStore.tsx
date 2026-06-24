@@ -5,18 +5,64 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
+import { useAuth } from "./AuthProvider";
+import { supabase } from "@/lib/supabase";
 import {
   clampMilestoneWeight,
-  seedProjects,
   type ActivityKind,
   type ChecklistRecurrence,
   type NewProjectInput,
   type Project,
+  type ProjectType,
 } from "@/lib/projects";
 
-const STORAGE_KEY = "life-tracker:projects:v1";
+type ProjectRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  client: string | null;
+  color: string;
+  type: string;
+  target: string | null;
+  milestones: Project["milestones"];
+  checklist: Project["checklist"];
+  activity: Project["activity"];
+  created_at: string;
+};
+
+function fromRow(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    client: row.client ?? undefined,
+    color: row.color,
+    type: row.type as ProjectType,
+    target: row.target ?? undefined,
+    milestones: row.milestones ?? [],
+    checklist: row.checklist ?? [],
+    activity: row.activity ?? [],
+    createdAt: row.created_at,
+  };
+}
+
+function toRow(project: Project, userId: string): ProjectRow {
+  return {
+    id: project.id,
+    user_id: userId,
+    name: project.name,
+    client: project.client ?? null,
+    color: project.color,
+    type: project.type,
+    target: project.target ?? null,
+    milestones: project.milestones,
+    checklist: project.checklist,
+    activity: project.activity,
+    created_at: project.createdAt,
+  };
+}
 
 type ProjectStore = {
   projects: Project[];
@@ -60,38 +106,104 @@ export function ProjectStoreProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [projects, setProjects] = useState<Project[]>(() => seedProjects());
+  const { user } = useAuth();
+  const [projects, setProjects] = useState<Project[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
+  const projectsRef = useRef(projects);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Project[];
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (Array.isArray(parsed)) setProjects(parsed);
-      }
-    } catch {
-      // ignore malformed storage
-    }
-    setHydrated(true);
-  }, []);
+    projectsRef.current = projects;
+  }, [projects]);
 
+  // Load this user's projects from Supabase, then subscribe to row changes
+  // so edits made on another device or tab show up here too.
   useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-    } catch {
-      // ignore quota / privacy-mode errors
+    if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setProjects([]);
+      setHydrated(false);
+      return;
     }
-  }, [projects, hydrated]);
 
-  /** Apply a transform to one project by id. */
+    let active = true;
+    setHydrated(false);
+
+    supabase
+      .from("projects")
+      .select("*")
+      .eq("user_id", user.id)
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          console.error("Failed to load projects", error);
+        } else if (data) {
+          setProjects((data as ProjectRow[]).map(fromRow));
+        }
+        setHydrated(true);
+      });
+
+    const channel = supabase
+      .channel(`projects:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "projects",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const oldId = (payload.old as { id: string }).id;
+            setProjects((prev) => prev.filter((p) => p.id !== oldId));
+            return;
+          }
+          const next = fromRow(payload.new as ProjectRow);
+          setProjects((prev) => {
+            const idx = prev.findIndex((p) => p.id === next.id);
+            if (idx === -1) return [...prev, next];
+            const copy = [...prev];
+            copy[idx] = next;
+            return copy;
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const persist = useCallback(
+    (project: Project) => {
+      if (!user) return;
+      supabase
+        .from("projects")
+        .update(toRow(project, user.id))
+        .eq("id", project.id)
+        .then(({ error }) => {
+          if (error) console.error("Failed to save project", error);
+        });
+    },
+    [user],
+  );
+
+  /** Apply a transform to one project by id, locally and in Supabase. */
   const patchProject = useCallback(
     (id: string, fn: (p: Project) => Project) => {
-      setProjects((prev) => prev.map((p) => (p.id === id ? fn(p) : p)));
+      let updated: Project | undefined;
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id !== id) return p;
+          updated = fn(p);
+          return updated;
+        }),
+      );
+      if (updated) persist(updated);
     },
-    [],
+    [persist],
   );
 
   const getProject = useCallback(
@@ -99,23 +211,34 @@ export function ProjectStoreProvider({
     [projects],
   );
 
-  const addProject = useCallback((input: NewProjectInput) => {
-    const id = makeId("proj");
-    const project: Project = {
-      id,
-      name: input.name.trim(),
-      client: input.client?.trim() || undefined,
-      color: input.color ?? "#6b7280",
-      type: input.type ?? "active",
-      target: input.target || undefined,
-      milestones: [],
-      checklist: [],
-      activity: [],
-      createdAt: new Date().toISOString(),
-    };
-    setProjects((prev) => [...prev, project]);
-    return id;
-  }, []);
+  const addProject = useCallback(
+    (input: NewProjectInput) => {
+      const id = makeId("proj");
+      const project: Project = {
+        id,
+        name: input.name.trim(),
+        client: input.client?.trim() || undefined,
+        color: input.color ?? "#6b7280",
+        type: input.type ?? "active",
+        target: input.target || undefined,
+        milestones: [],
+        checklist: [],
+        activity: [],
+        createdAt: new Date().toISOString(),
+      };
+      setProjects((prev) => [...prev, project]);
+      if (user) {
+        supabase
+          .from("projects")
+          .insert(toRow(project, user.id))
+          .then(({ error }) => {
+            if (error) console.error("Failed to save project", error);
+          });
+      }
+      return id;
+    },
+    [user],
+  );
 
   const updateProject = useCallback(
     (id: string, patch: Partial<Project>) => {
@@ -124,9 +247,20 @@ export function ProjectStoreProvider({
     [patchProject],
   );
 
-  const deleteProject = useCallback((id: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+  const deleteProject = useCallback(
+    (id: string) => {
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      if (!user) return;
+      supabase
+        .from("projects")
+        .delete()
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) console.error("Failed to delete project", error);
+        });
+    },
+    [user],
+  );
 
   const addMilestone = useCallback(
     (projectId: string, title: string, weight: number) => {

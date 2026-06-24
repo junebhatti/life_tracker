@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/lib/data";
+import { useAuth } from "./AuthProvider";
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user, signOut } = useAuth();
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-sidebar px-3 py-5">
@@ -51,6 +53,15 @@ export default function Sidebar() {
         >
           Settings
         </Link>
+        {user && (
+          <button
+            type="button"
+            onClick={() => signOut()}
+            className="rounded-md px-2 py-1.5 text-left text-sm text-neutral-600 transition-colors hover:bg-hover"
+          >
+            Sign out
+          </button>
+        )}
       </nav>
     </aside>
   );
