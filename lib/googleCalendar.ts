@@ -12,9 +12,11 @@ const TIME_ZONE = process.env.GOOGLE_CALENDAR_TIMEZONE || "America/Denver";
 
 type GoogleEventItem = {
   id: string;
+  /** Shared across all instances of a recurring event; absent for one-off events. */
+  recurringEventId?: string;
   summary?: string;
   location?: string;
-  start?: { date?: string; dateTime?: string };
+  start?: { date?: string; dateTime?: string; timeZone?: string };
 };
 
 type TokenResponse = { access_token: string };
@@ -83,22 +85,28 @@ function toCalendarEvent(item: GoogleEventItem, todayKey: string): CalendarEvent
     };
   }
 
+  // Prefer the event's own time zone over our env-var default, since it's
+  // what Google Calendar itself uses to render the event's local time.
+  const zone = item.start?.timeZone || TIME_ZONE;
   const start = new Date(item.start?.dateTime ?? Date.now());
   return {
     id: item.id,
     title,
     location,
     day:
-      dateKeyInTZ(start, TIME_ZONE) === todayKey
+      dateKeyInTZ(start, zone) === todayKey
         ? "Today"
-        : weekdayLabel(start, TIME_ZONE),
+        : weekdayLabel(start, zone),
     time: start.toLocaleTimeString("en-US", {
-      timeZone: TIME_ZONE,
+      timeZone: zone,
       hour: "numeric",
       minute: "2-digit",
     }),
   };
 }
+
+/** How many raw instances to pull before deduping recurring series down to maxResults. */
+const FETCH_POOL_SIZE = 50;
 
 export async function fetchUpcomingEvents(maxResults = 10): Promise<CalendarEvent[]> {
   const accessToken = await getAccessToken();
@@ -108,7 +116,7 @@ export async function fetchUpcomingEvents(maxResults = 10): Promise<CalendarEven
     timeMin: now.toISOString(),
     singleEvents: "true",
     orderBy: "startTime",
-    maxResults: String(maxResults),
+    maxResults: String(FETCH_POOL_SIZE),
   });
 
   const res = await fetch(
@@ -123,5 +131,19 @@ export async function fetchUpcomingEvents(maxResults = 10): Promise<CalendarEven
 
   const data = (await res.json()) as { items?: GoogleEventItem[] };
   const todayKey = dateKeyInTZ(now, TIME_ZONE);
-  return (data.items ?? []).map((item) => toCalendarEvent(item, todayKey));
+
+  // singleEvents=true expands each recurring series (birthdays, weekly
+  // 1:1s) into one item per upcoming occurrence. Keep only the soonest
+  // occurrence of each series so they don't crowd out one-off events.
+  const seenSeries = new Set<string>();
+  const deduped: GoogleEventItem[] = [];
+  for (const item of data.items ?? []) {
+    const seriesKey = item.recurringEventId ?? item.id;
+    if (seenSeries.has(seriesKey)) continue;
+    seenSeries.add(seriesKey);
+    deduped.push(item);
+    if (deduped.length >= maxResults) break;
+  }
+
+  return deduped.map((item) => toCalendarEvent(item, todayKey));
 }
