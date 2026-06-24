@@ -1,5 +1,6 @@
--- Run this once in the Supabase SQL editor (Project > SQL Editor > New query)
--- to create the tables Life Tracker syncs Tasks, Projects, and Routines through.
+-- Run this in the Supabase SQL editor (Project > SQL Editor > New query).
+-- Safe to paste and run in full at any time, no matter what you've already
+-- run before — every statement only creates/changes what's missing.
 
 create table if not exists public.tasks (
   id text primary key,
@@ -55,10 +56,7 @@ create table if not exists public.library_notes (
   title text not null,
   content text not null default '',
   tags jsonb not null default '[]',
-  -- Tags added in the app, not touched by sync, so they survive re-syncing.
   manual_tags jsonb not null default '[]',
-  -- The folder the note sits directly inside, used to group the Library
-  -- into tabs.
   category text,
   person_ids jsonb not null default '[]',
   source_modified_at timestamptz,
@@ -66,6 +64,10 @@ create table if not exists public.library_notes (
   created_at timestamptz not null default now(),
   unique (user_id, path)
 );
+
+-- In case library_notes was created before these two columns existed.
+alter table public.library_notes add column if not exists manual_tags jsonb not null default '[]';
+alter table public.library_notes add column if not exists category text;
 
 create index if not exists tasks_user_id_idx on public.tasks (user_id);
 create index if not exists projects_user_id_idx on public.projects (user_id);
@@ -80,34 +82,69 @@ alter table public.people enable row level security;
 alter table public.library_notes enable row level security;
 
 -- Each signed-in user can only see and modify their own rows.
+-- Dropped and recreated each run so this script stays safe to re-paste.
+drop policy if exists "tasks_select_own" on public.tasks;
+drop policy if exists "tasks_insert_own" on public.tasks;
+drop policy if exists "tasks_update_own" on public.tasks;
+drop policy if exists "tasks_delete_own" on public.tasks;
 create policy "tasks_select_own" on public.tasks for select using (auth.uid() = user_id);
 create policy "tasks_insert_own" on public.tasks for insert with check (auth.uid() = user_id);
 create policy "tasks_update_own" on public.tasks for update using (auth.uid() = user_id);
 create policy "tasks_delete_own" on public.tasks for delete using (auth.uid() = user_id);
 
+drop policy if exists "projects_select_own" on public.projects;
+drop policy if exists "projects_insert_own" on public.projects;
+drop policy if exists "projects_update_own" on public.projects;
+drop policy if exists "projects_delete_own" on public.projects;
 create policy "projects_select_own" on public.projects for select using (auth.uid() = user_id);
 create policy "projects_insert_own" on public.projects for insert with check (auth.uid() = user_id);
 create policy "projects_update_own" on public.projects for update using (auth.uid() = user_id);
 create policy "projects_delete_own" on public.projects for delete using (auth.uid() = user_id);
 
+drop policy if exists "routines_select_own" on public.routines;
+drop policy if exists "routines_insert_own" on public.routines;
+drop policy if exists "routines_update_own" on public.routines;
+drop policy if exists "routines_delete_own" on public.routines;
 create policy "routines_select_own" on public.routines for select using (auth.uid() = user_id);
 create policy "routines_insert_own" on public.routines for insert with check (auth.uid() = user_id);
 create policy "routines_update_own" on public.routines for update using (auth.uid() = user_id);
 create policy "routines_delete_own" on public.routines for delete using (auth.uid() = user_id);
 
+drop policy if exists "people_select_own" on public.people;
+drop policy if exists "people_insert_own" on public.people;
+drop policy if exists "people_update_own" on public.people;
+drop policy if exists "people_delete_own" on public.people;
 create policy "people_select_own" on public.people for select using (auth.uid() = user_id);
 create policy "people_insert_own" on public.people for insert with check (auth.uid() = user_id);
 create policy "people_update_own" on public.people for update using (auth.uid() = user_id);
 create policy "people_delete_own" on public.people for delete using (auth.uid() = user_id);
 
+drop policy if exists "library_notes_select_own" on public.library_notes;
+drop policy if exists "library_notes_insert_own" on public.library_notes;
+drop policy if exists "library_notes_update_own" on public.library_notes;
+drop policy if exists "library_notes_delete_own" on public.library_notes;
 create policy "library_notes_select_own" on public.library_notes for select using (auth.uid() = user_id);
 create policy "library_notes_insert_own" on public.library_notes for insert with check (auth.uid() = user_id);
 create policy "library_notes_update_own" on public.library_notes for update using (auth.uid() = user_id);
 create policy "library_notes_delete_own" on public.library_notes for delete using (auth.uid() = user_id);
 
 -- Broadcast row changes so other open tabs/devices update live.
-alter publication supabase_realtime add table public.tasks;
-alter publication supabase_realtime add table public.projects;
-alter publication supabase_realtime add table public.routines;
-alter publication supabase_realtime add table public.people;
-alter publication supabase_realtime add table public.library_notes;
+-- Guarded so re-running doesn't error on tables already added.
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'tasks') then
+    alter publication supabase_realtime add table public.tasks;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'projects') then
+    alter publication supabase_realtime add table public.projects;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'routines') then
+    alter publication supabase_realtime add table public.routines;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'people') then
+    alter publication supabase_realtime add table public.people;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'library_notes') then
+    alter publication supabase_realtime add table public.library_notes;
+  end if;
+end $$;
