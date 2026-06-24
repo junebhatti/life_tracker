@@ -8,6 +8,7 @@ type EventsResponse = {
   events: CalendarEvent[];
   configured: boolean;
   error?: string;
+  detail?: string;
 };
 
 /** Upcoming events from the connected Google Calendar, in an agenda list. */
@@ -69,7 +70,14 @@ export default function CalendarList() {
       )}
 
       {state && state.configured && state.error && (
-        <p className="px-2 py-3 text-sm text-muted">{state.error}</p>
+        <div className="px-2 py-3">
+          <p className="text-sm text-muted">{state.error}</p>
+          {state.detail && (
+            <p className="mt-1 break-all font-mono text-[11px] text-muted/70">
+              {state.detail}
+            </p>
+          )}
+        </div>
       )}
 
       {state && state.configured && !state.error && state.events.length === 0 && (

@@ -11,8 +11,14 @@ export async function GET() {
     return NextResponse.json({ events, configured: true });
   } catch (error) {
     console.error("Google Calendar fetch failed:", error);
+    const detail = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { events: [], configured: true, error: "Couldn't load calendar events." },
+      {
+        events: [],
+        configured: true,
+        error: "Couldn't load calendar events.",
+        detail,
+      },
       { status: 502 },
     );
   }
