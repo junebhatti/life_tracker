@@ -8,7 +8,14 @@ export type LibraryNote = {
   path: string;
   title: string;
   content: string;
+  /** Tags from the note's frontmatter — overwritten on every sync. */
   tags: string[];
+  /** Tags added in the app. Sync never touches this, so they survive
+   *  re-syncing the same note from Obsidian. */
+  manualTags: string[];
+  /** The folder the note sits directly inside, used to group the Library
+   *  into tabs (e.g. "Quotes/Tony Robbins.md" -> category "Quotes"). */
+  category?: string;
   /** Person IDs this note is linked to, resolved at sync time from a
    *  `person`/`people` frontmatter field. */
   personIds: string[];
@@ -23,6 +30,7 @@ export type ParsedNote = {
   title: string;
   content: string;
   tags: string[];
+  category?: string;
   /** Names this note is linked to, resolved to Person IDs at sync time. */
   personNames: string[];
   sourceModifiedAt: string;
@@ -62,6 +70,7 @@ export function parseMarkdownNote(
     title,
     content: content.trim(),
     tags: normalizeStringArray(data.tags),
+    category: categoryFromPath(path),
     personNames,
     sourceModifiedAt,
   };
@@ -70,6 +79,13 @@ export function parseMarkdownNote(
 function titleFromPath(path: string): string {
   const file = path.split("/").pop() ?? path;
   return file.replace(/\.md$/i, "");
+}
+
+/** The folder a note sits directly inside, e.g. "Quotes/Tony Robbins.md" ->
+ *  "Quotes". Undefined if the note has no parent folder. */
+function categoryFromPath(path: string): string | undefined {
+  const folders = path.split("/").slice(0, -1);
+  return folders.length > 0 ? folders[folders.length - 1] : undefined;
 }
 
 function isInPeopleFolder(path: string): boolean {

@@ -61,6 +61,7 @@ export default function ObsidianSync() {
         title: n.title,
         content: n.content,
         tags: n.tags,
+        category: n.category,
         personIds: n.personNames
           .map((name) => idsByName[name.toLowerCase()])
           .filter((id): id is string => !!id),
@@ -90,15 +91,18 @@ export default function ObsidianSync() {
       <p className="mt-1 text-sm text-muted">
         Your notes only exist on this device, so syncing is manual: pick your
         vault folder (or any subfolder) and its Markdown notes are synced
-        into the Library. A note is linked to a person on the People page
-        if either: it lives in a folder named{" "}
+        into the Library, grouped into tabs by whichever folder each note
+        sits directly inside. A note is linked to a person on the People
+        page if either: it lives in a folder named{" "}
         <code className="rounded bg-hover px-1">Calls</code> and is named
         after them (e.g.{" "}
         <code className="rounded bg-hover px-1">People/Calls/Jane Doe.md</code>
         ), or it has a <code className="rounded bg-hover px-1">person</code> /{" "}
         <code className="rounded bg-hover px-1">people</code> frontmatter
         field (e.g. <code className="rounded bg-hover px-1">person: Jane Doe</code>
-        ). Re-run this any time you&apos;ve updated your notes.
+        ). Re-run this any time you&apos;ve updated your notes — title,
+        body, and frontmatter tags always reflect the Obsidian file, but any
+        tags you add in the Library stay put.
       </p>
 
       <input

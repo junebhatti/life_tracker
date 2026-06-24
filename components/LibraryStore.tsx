@@ -19,6 +19,8 @@ type LibraryNoteRow = {
   title: string;
   content: string;
   tags: string[];
+  manual_tags: string[];
+  category: string | null;
   person_ids: string[];
   source_modified_at: string | null;
   synced_at: string;
@@ -32,6 +34,8 @@ function fromRow(row: LibraryNoteRow): LibraryNote {
     title: row.title,
     content: row.content,
     tags: row.tags ?? [],
+    manualTags: row.manual_tags ?? [],
+    category: row.category ?? undefined,
     personIds: row.person_ids ?? [],
     sourceModifiedAt: row.source_modified_at ?? undefined,
     syncedAt: row.synced_at,
@@ -44,6 +48,7 @@ export type SyncNoteInput = {
   title: string;
   content: string;
   tags: string[];
+  category?: string;
   personIds: string[];
   sourceModifiedAt: string;
 };
@@ -55,8 +60,10 @@ type LibraryStore = {
   hydrated: boolean;
   deleteNote: (id: string) => void;
   /** Upserts a batch of parsed notes by vault path: existing paths are
-   *  updated in place, new paths are inserted. */
+   *  updated in place, new paths are inserted. Never touches manualTags. */
   syncNotes: (notes: SyncNoteInput[]) => Promise<SyncSummary>;
+  addManualTag: (noteId: string, tag: string) => void;
+  removeManualTag: (noteId: string, tag: string) => void;
 };
 
 const LibraryContext = createContext<LibraryStore | null>(null);
@@ -183,12 +190,15 @@ export function LibraryStoreProvider({
           title: n.title,
           content: n.content,
           tags: n.tags,
+          category: n.category ?? null,
           person_ids: n.personIds,
           source_modified_at: n.sourceModifiedAt,
           synced_at: now,
         };
       });
 
+      // manual_tags is deliberately omitted: Postgres leaves it untouched on
+      // conflict, so tags added in the app survive re-syncing the same note.
       for (const batch of chunk(rows, SYNC_BATCH_SIZE)) {
         const { error } = await supabase
           .from("library_notes")
@@ -209,6 +219,8 @@ export function LibraryStoreProvider({
             title: row.title,
             content: row.content,
             tags: row.tags,
+            manualTags: existing?.manualTags ?? [],
+            category: row.category ?? undefined,
             personIds: row.person_ids,
             sourceModifiedAt: row.source_modified_at,
             syncedAt: row.synced_at,
@@ -223,8 +235,57 @@ export function LibraryStoreProvider({
     [user],
   );
 
+  const setManualTags = useCallback(
+    (noteId: string, tags: string[]) => {
+      setNotes((prev) =>
+        prev.map((n) => (n.id === noteId ? { ...n, manualTags: tags } : n)),
+      );
+      if (!user) return;
+      supabase
+        .from("library_notes")
+        .update({ manual_tags: tags })
+        .eq("id", noteId)
+        .then(({ error }) => {
+          if (error) console.error("Failed to update tags", error);
+        });
+    },
+    [user],
+  );
+
+  const addManualTag = useCallback(
+    (noteId: string, tag: string) => {
+      const trimmed = tag.trim();
+      if (!trimmed) return;
+      const note = notesRef.current.find((n) => n.id === noteId);
+      if (!note || note.manualTags.includes(trimmed)) return;
+      setManualTags(noteId, [...note.manualTags, trimmed]);
+    },
+    [setManualTags],
+  );
+
+  const removeManualTag = useCallback(
+    (noteId: string, tag: string) => {
+      const note = notesRef.current.find((n) => n.id === noteId);
+      if (!note) return;
+      setManualTags(
+        noteId,
+        note.manualTags.filter((t) => t !== tag),
+      );
+    },
+    [setManualTags],
+  );
+
   return (
-    <LibraryContext.Provider value={{ notes, hydrated, deleteNote, syncNotes }}>
+    <LibraryContext.Provider
+      value={{
+        notes,
+        hydrated,
+        deleteNote,
+        syncNotes,
+        addManualTag,
+        removeManualTag,
+      }}
+    >
       {children}
     </LibraryContext.Provider>
   );
