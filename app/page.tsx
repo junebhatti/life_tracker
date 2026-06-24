@@ -8,7 +8,7 @@ import CalendarList from "@/components/CalendarList";
 import RoutineTracker from "@/components/RoutineTracker";
 import { useTasks } from "@/components/TaskStore";
 import { useState } from "react";
-import { HABITS, UPCOMING_EVENTS, type Habit } from "@/lib/data";
+import { HABITS, type Habit } from "@/lib/data";
 
 function formatToday(date: Date) {
   return date.toLocaleDateString("en-US", {
@@ -102,7 +102,7 @@ export default function TodayPage() {
 
             {/* Calendar / agenda */}
             <div className="mb-9">
-              <CalendarList events={UPCOMING_EVENTS} />
+              <CalendarList />
             </div>
 
             {/* All open tasks */}
