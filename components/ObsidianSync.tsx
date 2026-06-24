@@ -90,12 +90,15 @@ export default function ObsidianSync() {
       <p className="mt-1 text-sm text-muted">
         Your notes only exist on this device, so syncing is manual: pick your
         vault folder (or any subfolder) and its Markdown notes are synced
-        into the Library. Notes with a{" "}
-        <code className="rounded bg-hover px-1">person</code> or{" "}
+        into the Library. A note is linked to a person on the People page
+        if either: it lives in a folder named{" "}
+        <code className="rounded bg-hover px-1">Calls and People</code> and
+        is named after them (e.g.{" "}
+        <code className="rounded bg-hover px-1">Jane Doe.md</code>), or it
+        has a <code className="rounded bg-hover px-1">person</code> /{" "}
         <code className="rounded bg-hover px-1">people</code> frontmatter
-        field (e.g. <code className="rounded bg-hover px-1">person: Jane Doe</code>)
-        are also linked to that person on the People page — re-run this any
-        time you&apos;ve updated your notes.
+        field (e.g. <code className="rounded bg-hover px-1">person: Jane Doe</code>
+        ). Re-run this any time you&apos;ve updated your notes.
       </p>
 
       <input

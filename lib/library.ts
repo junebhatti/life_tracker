@@ -4,7 +4,7 @@
 
 export type LibraryNote = {
   id: string;
-  /** Path relative to the synced folder, e.g. "People/Jane Doe/2024-03-01 call.md". */
+  /** Path relative to the synced folder, e.g. "Calls and People/Jane Doe.md". */
   path: string;
   title: string;
   content: string;
@@ -23,30 +23,45 @@ export type ParsedNote = {
   title: string;
   content: string;
   tags: string[];
-  /** Raw names from the note's `person`/`people` frontmatter, resolved to
-   *  Person IDs at sync time. */
+  /** Names this note is linked to, resolved to Person IDs at sync time. */
   personNames: string[];
   sourceModifiedAt: string;
 };
 
+/** Folders where every note is about one person, named after them (e.g.
+ *  "Calls and People/Jane Doe.md") — matched by folder name anywhere in the
+ *  path, case-insensitively. */
+const PEOPLE_FOLDER_NAMES = ["calls and people"];
+
 /** Parses an Obsidian-style note: YAML frontmatter (title, tags, person/people)
- *  plus body content. Falls back to the filename when there's no title field. */
+ *  plus body content. Falls back to the filename when there's no title field.
+ *  Notes inside a people folder (see PEOPLE_FOLDER_NAMES) are linked to the
+ *  person named by the filename, even without frontmatter. */
 export function parseMarkdownNote(
   path: string,
   raw: string,
   sourceModifiedAt: string,
 ): ParsedNote {
   const { data, content } = parseFrontmatter(raw);
+  const filenameTitle = titleFromPath(path);
   const title =
     typeof data.title === "string" && data.title.trim()
       ? data.title.trim()
-      : titleFromPath(path);
+      : filenameTitle;
+
+  const personNames = normalizeStringArray(
+    data.person ?? data.people ?? data.persons,
+  );
+  if (isInPeopleFolder(path) && !personNames.includes(filenameTitle)) {
+    personNames.push(filenameTitle);
+  }
+
   return {
     path,
     title,
     content: content.trim(),
     tags: normalizeStringArray(data.tags),
-    personNames: normalizeStringArray(data.person ?? data.people ?? data.persons),
+    personNames,
     sourceModifiedAt,
   };
 }
@@ -54,6 +69,13 @@ export function parseMarkdownNote(
 function titleFromPath(path: string): string {
   const file = path.split("/").pop() ?? path;
   return file.replace(/\.md$/i, "");
+}
+
+function isInPeopleFolder(path: string): boolean {
+  const folders = path.split("/").slice(0, -1);
+  return folders.some((folder) =>
+    PEOPLE_FOLDER_NAMES.includes(folder.toLowerCase()),
+  );
 }
 
 function normalizeStringArray(value: unknown): string[] {
