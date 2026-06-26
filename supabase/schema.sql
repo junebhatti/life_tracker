@@ -73,17 +73,31 @@ alter table public.library_notes add column if not exists category text;
 alter table public.library_notes add column if not exists manual_title text;
 alter table public.library_notes add column if not exists manual_content text;
 
+-- Manually logged income/expense entries for the Budget tracker.
+create table if not exists public.budget_transactions (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  amount numeric not null,
+  type text not null default 'expense',
+  description text not null,
+  category text,
+  date text not null,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists tasks_user_id_idx on public.tasks (user_id);
 create index if not exists projects_user_id_idx on public.projects (user_id);
 create index if not exists routines_user_id_idx on public.routines (user_id);
 create index if not exists people_user_id_idx on public.people (user_id);
 create index if not exists library_notes_user_id_idx on public.library_notes (user_id);
+create index if not exists budget_transactions_user_id_idx on public.budget_transactions (user_id);
 
 alter table public.tasks enable row level security;
 alter table public.projects enable row level security;
 alter table public.routines enable row level security;
 alter table public.people enable row level security;
 alter table public.library_notes enable row level security;
+alter table public.budget_transactions enable row level security;
 
 -- Each signed-in user can only see and modify their own rows.
 -- Dropped and recreated each run so this script stays safe to re-paste.
@@ -132,6 +146,15 @@ create policy "library_notes_insert_own" on public.library_notes for insert with
 create policy "library_notes_update_own" on public.library_notes for update using (auth.uid() = user_id);
 create policy "library_notes_delete_own" on public.library_notes for delete using (auth.uid() = user_id);
 
+drop policy if exists "budget_transactions_select_own" on public.budget_transactions;
+drop policy if exists "budget_transactions_insert_own" on public.budget_transactions;
+drop policy if exists "budget_transactions_update_own" on public.budget_transactions;
+drop policy if exists "budget_transactions_delete_own" on public.budget_transactions;
+create policy "budget_transactions_select_own" on public.budget_transactions for select using (auth.uid() = user_id);
+create policy "budget_transactions_insert_own" on public.budget_transactions for insert with check (auth.uid() = user_id);
+create policy "budget_transactions_update_own" on public.budget_transactions for update using (auth.uid() = user_id);
+create policy "budget_transactions_delete_own" on public.budget_transactions for delete using (auth.uid() = user_id);
+
 -- Broadcast row changes so other open tabs/devices update live.
 -- Guarded so re-running doesn't error on tables already added.
 do $$
@@ -150,5 +173,8 @@ begin
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'library_notes') then
     alter publication supabase_realtime add table public.library_notes;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'budget_transactions') then
+    alter publication supabase_realtime add table public.budget_transactions;
   end if;
 end $$;

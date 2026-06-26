@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "@/components/AuthProvider";
 import LoginScreen from "@/components/LoginScreen";
 import SupabaseSetupNotice from "@/components/SupabaseSetupNotice";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { BudgetStoreProvider } from "@/components/BudgetStore";
 import { LibraryStoreProvider } from "@/components/LibraryStore";
 import { PeopleStoreProvider } from "@/components/PeopleStore";
 import { ProjectStoreProvider } from "@/components/ProjectStore";
@@ -22,7 +23,9 @@ function Gate({ children }: { children: React.ReactNode }) {
       <RoutineStoreProvider>
         <PeopleStoreProvider>
           <LibraryStoreProvider>
-            <TaskStoreProvider>{children}</TaskStoreProvider>
+            <BudgetStoreProvider>
+              <TaskStoreProvider>{children}</TaskStoreProvider>
+            </BudgetStoreProvider>
           </LibraryStoreProvider>
         </PeopleStoreProvider>
       </RoutineStoreProvider>
