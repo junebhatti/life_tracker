@@ -85,6 +85,37 @@ create table if not exists public.budget_transactions (
   created_at timestamptz not null default now()
 );
 
+-- In case budget_transactions was created before this column existed: lets
+-- Plaid-synced rows dedupe on re-sync without colliding with manual entries
+-- (which leave this null; Postgres treats multiple nulls as non-conflicting).
+alter table public.budget_transactions add column if not exists external_id text;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'budget_transactions_user_external_unique'
+  ) then
+    alter table public.budget_transactions
+      add constraint budget_transactions_user_external_unique unique (user_id, external_id);
+  end if;
+end $$;
+
+-- Plaid access tokens for linked bank/credit accounts. RLS is enabled with
+-- NO policies below, so the anon/authenticated client can never read or
+-- write this table — only server routes using the service-role key (which
+-- bypasses RLS) may touch it. Never expose this table to client code.
+create table if not exists public.plaid_items (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  item_id text not null,
+  access_token text not null,
+  institution_name text,
+  cursor text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists plaid_items_user_id_idx on public.plaid_items (user_id);
+alter table public.plaid_items enable row level security;
+
 create index if not exists tasks_user_id_idx on public.tasks (user_id);
 create index if not exists projects_user_id_idx on public.projects (user_id);
 create index if not exists routines_user_id_idx on public.routines (user_id);
