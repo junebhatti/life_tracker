@@ -1,5 +1,6 @@
 import Sidebar from "@/components/Sidebar";
 import CalendarIntegrationStatus from "@/components/CalendarIntegrationStatus";
+import HealthIntegrationStatus from "@/components/HealthIntegrationStatus";
 import ObsidianSync from "@/components/ObsidianSync";
 import PlaidConnect from "@/components/PlaidConnect";
 import SessionStatus from "@/components/SessionStatus";
@@ -23,6 +24,7 @@ export default function SettingsPage() {
           <div className="mt-8 flex flex-col gap-4">
             <SessionStatus />
             <CalendarIntegrationStatus />
+            <HealthIntegrationStatus />
             <PlaidConnect />
             <ObsidianSync />
           </div>

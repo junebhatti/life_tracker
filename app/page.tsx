@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import SectionHeading from "@/components/SectionHeading";
 import TaskRow from "@/components/TaskRow";
 import CalendarList from "@/components/CalendarList";
+import HealthSnapshot from "@/components/HealthSnapshot";
 import RoutineTracker from "@/components/RoutineTracker";
 import NewTaskForm from "@/components/NewTaskForm";
 import { useTasks } from "@/components/TaskStore";
@@ -147,8 +148,9 @@ export default function TodayPage() {
             </section>
           </div>
 
-          {/* Right column — routines / habit tracker */}
-          <div className="w-72 shrink-0">
+          {/* Right column — health snapshot + routines / habit tracker */}
+          <div className="flex w-72 shrink-0 flex-col gap-9">
+            <HealthSnapshot />
             <RoutineTracker />
           </div>
         </div>
