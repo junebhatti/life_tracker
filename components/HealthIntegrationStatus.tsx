@@ -13,6 +13,7 @@ type StatusResponse = {
   connected?: boolean;
   snapshot?: HealthSnapshot;
   error?: string;
+  debug?: Partial<Record<"steps" | "restingHeartRate" | "sleep", string>>;
   checkedAt?: string;
 };
 
@@ -79,6 +80,18 @@ export default function HealthIntegrationStatus() {
                   {status.snapshot.restingHeartRate ?? "—"} · Sleep:{" "}
                   {status.snapshot.sleep ? `${status.snapshot.sleep.hours}h` : "—"}
                 </p>
+              )}
+              {status.debug && (
+                <div className="mt-1 flex flex-col gap-0.5">
+                  {Object.entries(status.debug).map(([field, message]) => (
+                    <p
+                      key={field}
+                      className="break-all font-mono text-[11px] text-muted/70"
+                    >
+                      {field}: {message}
+                    </p>
+                  ))}
+                </div>
               )}
             </div>
             <span

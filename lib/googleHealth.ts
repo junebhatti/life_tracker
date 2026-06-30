@@ -198,42 +198,57 @@ export type HealthSnapshot = {
   sleep?: SleepSummary;
 };
 
-/** Fetches today's steps, latest resting heart rate, and last sleep session in parallel. */
-export async function fetchHealthSnapshot(): Promise<HealthSnapshot> {
+/** Per-metric fetch failures, keyed by field name — surfaced in the Settings test panel. */
+type SnapshotDebug = Partial<Record<"steps" | "restingHeartRate" | "sleep", string>>;
+
+async function fetchHealthSnapshotWithDebug(): Promise<HealthSnapshot & { debug?: SnapshotDebug }> {
   // Fetched outside the per-metric try/catches below so a bad/expired
   // refresh token surfaces as a real connectivity error instead of silently
   // returning an empty snapshot.
   const accessToken = await getAccessToken();
+  const debug: SnapshotDebug = {};
 
   const [steps, restingHeartRate, sleep] = await Promise.all([
     fetchStepsToday(accessToken).catch((error) => {
-      console.error("Google Health: steps fetch failed:", error);
+      debug.steps = error instanceof Error ? error.message : String(error);
       return undefined;
     }),
     fetchRestingHeartRate(accessToken).catch((error) => {
-      console.error("Google Health: resting heart rate fetch failed:", error);
+      debug.restingHeartRate = error instanceof Error ? error.message : String(error);
       return undefined;
     }),
     fetchRecentSleep(accessToken).catch((error) => {
-      console.error("Google Health: sleep fetch failed:", error);
+      debug.sleep = error instanceof Error ? error.message : String(error);
       return undefined;
     }),
   ]);
 
-  return { steps, restingHeartRate, sleep };
+  return { steps, restingHeartRate, sleep, debug: Object.keys(debug).length ? debug : undefined };
+}
+
+/** Fetches today's steps, latest resting heart rate, and last sleep session in parallel. */
+export async function fetchHealthSnapshot(): Promise<HealthSnapshot> {
+  const { debug, ...snapshot } = await fetchHealthSnapshotWithDebug();
+  if (debug) {
+    for (const [field, message] of Object.entries(debug)) {
+      console.error(`Google Health: ${field} fetch failed:`, message);
+    }
+  }
+  return snapshot;
 }
 
 export type HealthStatus = {
   connected: boolean;
   snapshot?: HealthSnapshot;
   error?: string;
+  debug?: SnapshotDebug;
 };
 
 /** For the Settings page's "test sync" button. */
 export async function checkHealthStatus(): Promise<HealthStatus> {
   try {
-    const snapshot = await fetchHealthSnapshot();
-    return { connected: true, snapshot };
+    const { debug, ...snapshot } = await fetchHealthSnapshotWithDebug();
+    return { connected: true, snapshot, debug };
   } catch (error) {
     return {
       connected: false,
