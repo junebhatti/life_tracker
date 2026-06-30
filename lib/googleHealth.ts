@@ -111,6 +111,21 @@ function findNestedNumber(value: unknown, candidates: string[]): number | undefi
   return undefined;
 }
 
+/** Recursively searches an object's values for the first key matching any candidate field name. */
+function findNestedString(value: unknown, candidates: string[]): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of candidates) {
+    const v = record[key];
+    if (typeof v === "string" && v.trim() !== "") return v;
+  }
+  for (const nested of Object.values(record)) {
+    const found = findNestedString(nested, candidates);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
 type RollupResponse = {
   rollupDataPoints?: Array<{ steps?: { countSum?: string } }>;
 };
@@ -164,7 +179,20 @@ async function fetchRestingHeartRate(
   const points = data.dataPoints ?? [];
   if (points.length === 0) return undefined;
 
-  return findNestedNumber(points[0], ["beatsPerMinute", "bpm", "value", "restingHeartRate"]);
+  // The API doesn't guarantee point order, so explicitly pick the most
+  // recently dated reading instead of trusting array order (which previously
+  // could pin the value to a stale day for most of the window).
+  let latest = points[0];
+  let latestDate = findNestedString(latest, ["date"]);
+  for (const point of points.slice(1)) {
+    const date = findNestedString(point, ["date"]);
+    if (date && (!latestDate || date > latestDate)) {
+      latest = point;
+      latestDate = date;
+    }
+  }
+
+  return findNestedNumber(latest, ["beatsPerMinute", "bpm", "value", "restingHeartRate"]);
 }
 
 /** Minutes spent in each sleep stage, when the device/data source reports them. */
@@ -289,10 +317,22 @@ async function fetchRecentSleep(
 
   if (sessions.length === 0) return undefined;
 
-  // The longest session in the window is treated as the main sleep, so a
-  // short nap doesn't get reported in place of last night's sleep.
-  sessions.sort((a, b) => b.minutes - a.minutes);
-  const longest = sessions[0];
+  // Group sessions by the civil date they ended on, then take the longest
+  // session from the most recent of those dates. Picking the longest session
+  // across the whole window (instead of per-day) could pin the snapshot to
+  // an older, longer night and make "last night's sleep" stop updating once
+  // a shorter night came along.
+  const byEndDate = new Map<string, Session[]>();
+  for (const session of sessions) {
+    const dateKey = civilDateString(civilDateParts(new Date(session.end), timeZone));
+    const list = byEndDate.get(dateKey);
+    if (list) list.push(session);
+    else byEndDate.set(dateKey, [session]);
+  }
+  const mostRecentDate = [...byEndDate.keys()].sort().at(-1)!;
+  const candidates = byEndDate.get(mostRecentDate)!;
+  candidates.sort((a, b) => b.minutes - a.minutes);
+  const longest = candidates[0];
   const sleep = longest.sleep;
   const summary = sleep.summary as Record<string, unknown> | undefined;
 
