@@ -5,8 +5,8 @@
 // app/api/calendar/callback for how GOOGLE_REFRESH_TOKEN(_2) get minted.
 
 import type { CalendarEvent } from "@/lib/data";
+import { refreshGoogleAccessToken } from "@/lib/googleOAuth";
 
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
 /** Vercel functions run in UTC; events are displayed in this zone instead. */
 const TIME_ZONE = process.env.GOOGLE_CALENDAR_TIMEZONE || "America/Denver";
 
@@ -45,8 +45,6 @@ type GoogleEventItem = {
   start?: { date?: string; dateTime?: string; timeZone?: string };
 };
 
-type TokenResponse = { access_token: string };
-
 export function googleCalendarConfigured(): boolean {
   return Boolean(
     process.env.GOOGLE_CLIENT_ID &&
@@ -58,35 +56,6 @@ export function googleCalendarConfigured(): boolean {
 /** How many Google accounts are currently connected (0, 1, or 2). */
 export function connectedAccountCount(): number {
   return configuredAccounts().length;
-}
-
-async function getAccessToken(refreshToken: string): Promise<string> {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error("Google Calendar is not configured");
-  }
-
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(
-      `Failed to refresh Google access token (${res.status}): ${detail}`,
-    );
-  }
-
-  const data = (await res.json()) as TokenResponse;
-  return data.access_token;
 }
 
 /** YYYY-MM-DD in a given zone — used to compare calendar dates safely. */
@@ -205,7 +174,7 @@ async function fetchAccountEvents(
   timeMin: Date,
   timeMax: Date,
 ): Promise<GoogleEventItem[]> {
-  const accessToken = await getAccessToken(account.refreshToken);
+  const accessToken = await refreshGoogleAccessToken(account.refreshToken);
 
   const params = new URLSearchParams({
     timeMin: timeMin.toISOString(),

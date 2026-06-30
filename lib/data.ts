@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Projects", href: "/projects" },
   { label: "People", href: "/people" },
   { label: "Library", href: "/library" },
+  { label: "Budget", href: "/budget" },
 ];
 
 /** Shape returned by /api/calendar/events, sourced from Google Calendar. */
