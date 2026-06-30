@@ -186,25 +186,66 @@ export type SleepSummary = {
   stages?: SleepStages;
 };
 
-/** Best-effort parse of per-stage minutes out of a sleep data point's `summary` object. */
-function parseSleepStages(summary: Record<string, unknown>): SleepStages | undefined {
-  const stageFields: Array<[keyof SleepStages, string[]]> = [
-    ["deepMinutes", ["deep"]],
-    ["lightMinutes", ["light"]],
-    ["remMinutes", ["rem"]],
-    ["awakeMinutes", ["wake", "awake"]],
-  ];
+/** Maps a Google Health sleep-stage enum (e.g. "DEEP", "SLEEP_STAGE_REM") to our bucket. */
+function stageBucket(type: string): keyof SleepStages | undefined {
+  const t = type.toUpperCase();
+  if (t.includes("DEEP")) return "deepMinutes";
+  if (t.includes("REM")) return "remMinutes";
+  if (t.includes("LIGHT")) return "lightMinutes";
+  if (t.includes("AWAKE") || t.includes("WAKE")) return "awakeMinutes";
+  return undefined;
+}
 
+/**
+ * Best-effort parse of per-stage minutes out of a sleep data point. The Health API reports
+ * stages as `summary.stagesSummary` — an array of `{ type, minutes }` — and/or as a `stages`
+ * array of timed segments. We prefer the precomputed summary, then fall back to summing
+ * segment durations, so a missing/renamed summary field still yields a breakdown.
+ */
+function parseSleepStages(sleep: Record<string, unknown>): SleepStages | undefined {
   const stages: SleepStages = {};
-  for (const [outKey, candidateKeys] of stageFields) {
-    for (const key of candidateKeys) {
-      const minutes = readQuantity(summary[key], ["minutes", "minutesSum", "value"]);
-      if (minutes !== undefined) {
-        stages[outKey] = minutes;
-        break;
-      }
+  const add = (bucket: keyof SleepStages, minutes: number) => {
+    stages[bucket] = (stages[bucket] ?? 0) + minutes;
+  };
+
+  // Preferred: precomputed per-stage minutes.
+  const summary = sleep.summary as Record<string, unknown> | undefined;
+  const summaryList = summary?.stagesSummary ?? summary?.stages ?? summary?.levels;
+  if (Array.isArray(summaryList)) {
+    for (const entry of summaryList) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      const type = typeof e.type === "string" ? e.type : undefined;
+      const bucket = type ? stageBucket(type) : undefined;
+      const minutes = readQuantity(e.minutes ?? e.minutesSum ?? e.value, ["minutes", "value"]);
+      if (bucket && minutes !== undefined) add(bucket, minutes);
     }
   }
+
+  // Fallback: sum durations from the raw stage segments.
+  if (Object.keys(stages).length === 0 && Array.isArray(sleep.stages)) {
+    for (const seg of sleep.stages) {
+      if (!seg || typeof seg !== "object") continue;
+      const s = seg as Record<string, unknown>;
+      const type = typeof s.type === "string" ? s.type : undefined;
+      const bucket = type ? stageBucket(type) : undefined;
+      const startMs = typeof s.startTime === "string" ? Date.parse(s.startTime) : NaN;
+      const endMs = typeof s.endTime === "string" ? Date.parse(s.endTime) : NaN;
+      if (bucket && Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+        add(bucket, (endMs - startMs) / 60000);
+      }
+    }
+    for (const key of Object.keys(stages) as Array<keyof SleepStages>) {
+      stages[key] = Math.round(stages[key] as number);
+    }
+  }
+
+  // If the breakdown lacks an explicit awake total, borrow the summary's.
+  if (stages.awakeMinutes === undefined && summary) {
+    const awake = findNestedNumber(summary, ["minutesAwake"]);
+    if (awake !== undefined) stages.awakeMinutes = awake;
+  }
+
   return Object.keys(stages).length > 0 ? stages : undefined;
 }
 
@@ -232,7 +273,7 @@ async function fetchRecentSleep(
     minutes: number;
     start: string;
     end: string;
-    summary: Record<string, unknown> | undefined;
+    sleep: Record<string, unknown>;
   };
 
   const sessions = (data.dataPoints ?? [])
@@ -242,7 +283,7 @@ async function fetchRecentSleep(
       const summary = sleep.summary as Record<string, unknown> | undefined;
       const minutes = findNestedNumber(summary, ["minutesAsleep", "minutesInSleepPeriod"]);
       if (minutes === undefined || !interval?.startTime || !interval?.endTime) return undefined;
-      return { minutes, start: interval.startTime, end: interval.endTime, summary };
+      return { minutes, start: interval.startTime, end: interval.endTime, sleep };
     })
     .filter((s): s is Session => s !== undefined);
 
@@ -252,7 +293,8 @@ async function fetchRecentSleep(
   // short nap doesn't get reported in place of last night's sleep.
   sessions.sort((a, b) => b.minutes - a.minutes);
   const longest = sessions[0];
-  const summary = longest.summary;
+  const sleep = longest.sleep;
+  const summary = sleep.summary as Record<string, unknown> | undefined;
 
   return {
     hours: Math.round((longest.minutes / 60) * 10) / 10,
@@ -261,7 +303,7 @@ async function fetchRecentSleep(
     minutesAwake: summary ? findNestedNumber(summary, ["minutesAwake"]) : undefined,
     minutesToFallAsleep: summary ? findNestedNumber(summary, ["minutesToFallAsleep"]) : undefined,
     efficiency: summary ? findNestedNumber(summary, ["efficiency"]) : undefined,
-    stages: summary ? parseSleepStages(summary) : undefined,
+    stages: parseSleepStages(sleep),
   };
 }
 
