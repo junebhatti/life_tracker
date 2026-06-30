@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { checkHealthStatus, googleHealthConfigured } from "@/lib/googleHealth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!googleHealthConfigured()) {
     return NextResponse.json({ configured: false });
   }
 
-  const status = await checkHealthStatus();
+  const timezone = request.nextUrl.searchParams.get("timezone") ?? undefined;
+  const status = await checkHealthStatus(timezone);
   return NextResponse.json({
     configured: true,
     ...status,

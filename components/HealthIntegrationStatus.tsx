@@ -23,7 +23,8 @@ export default function HealthIntegrationStatus() {
   const [loading, setLoading] = useState(true);
 
   const runCheck = () => {
-    fetch("/api/health/status")
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    fetch(`/api/health/status?timezone=${encodeURIComponent(timezone)}`)
       .then((res) => res.json())
       .then((data: StatusResponse) => setStatus(data))
       .catch(() => setStatus({ configured: true, connected: false, error: "Request failed" }))

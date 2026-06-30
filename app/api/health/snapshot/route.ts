@@ -1,13 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { fetchHealthSnapshot, googleHealthConfigured } from "@/lib/googleHealth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!googleHealthConfigured()) {
     return NextResponse.json({ configured: false });
   }
 
+  const timezone = request.nextUrl.searchParams.get("timezone") ?? undefined;
+
   try {
-    const snapshot = await fetchHealthSnapshot();
+    const snapshot = await fetchHealthSnapshot(timezone);
     return NextResponse.json({ configured: true, snapshot });
   } catch (error) {
     console.error("Google Health snapshot fetch failed:", error);

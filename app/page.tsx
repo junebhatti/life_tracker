@@ -148,10 +148,10 @@ export default function TodayPage() {
             </section>
           </div>
 
-          {/* Right column — health snapshot + routines / habit tracker */}
+          {/* Right column — routines / habit tracker + health snapshot */}
           <div className="flex w-72 shrink-0 flex-col gap-9">
-            <HealthSnapshot />
             <RoutineTracker />
+            <HealthSnapshot />
           </div>
         </div>
       </main>
