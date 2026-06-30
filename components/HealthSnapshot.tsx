@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import SectionHeading from "./SectionHeading";
 import { useAuth } from "./AuthProvider";
 
@@ -17,9 +18,9 @@ type SnapshotResponse = {
 };
 
 const METRICS = [
-  { key: "sleep", label: "Sleep", icon: "🌙" },
-  { key: "restingHeartRate", label: "Resting HR", icon: "❤️" },
-  { key: "steps", label: "Steps", icon: "👟" },
+  { key: "sleep", label: "Sleep", href: "/health/sleep", accent: "#a855f7" },
+  { key: "restingHeartRate", label: "Resting HR", href: "/health/resting-heart-rate", accent: "#ef4444" },
+  { key: "steps", label: "Steps", href: "/health/steps", accent: "#0ea5e9" },
 ] as const;
 
 function formatValue(key: (typeof METRICS)[number]["key"], snapshot?: Snapshot) {
@@ -34,7 +35,7 @@ function formatUnit(key: (typeof METRICS)[number]["key"], snapshot?: Snapshot) {
   return undefined;
 }
 
-/** Sleep, resting heart rate, and steps synced in from Fitbit via Google Health. */
+/** Sleep, resting heart rate, and steps synced in from Fitbit via Google Health. Click a card for more detail. */
 export default function HealthSnapshot() {
   const [state, setState] = useState<SnapshotResponse | null>(null);
   const { session } = useAuth();
@@ -44,7 +45,7 @@ export default function HealthSnapshot() {
     let cancelled = false;
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     // Sending the session token (when signed in) lets the server record
-    // today's metrics for the Trends page; the widget still works without it.
+    // today's metrics for the trend pages; the widget still works without it.
     fetch(`/api/health/snapshot?timezone=${encodeURIComponent(timezone)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
@@ -97,15 +98,21 @@ export default function HealthSnapshot() {
 
       {state && !state.error && (
         <div className="mt-2 grid grid-cols-3 gap-3">
-          {METRICS.map(({ key, label, icon }) => (
-            <div
+          {METRICS.map(({ key, label, href, accent }) => (
+            <Link
               key={key}
-              className="flex flex-col items-center justify-center gap-1 rounded-xl border border-border bg-hover/40 px-2 py-4 text-center"
+              href={href}
+              className="group flex flex-col gap-3 rounded-xl border border-border bg-hover/40 px-3 py-4 text-left transition-colors hover:border-foreground/20 hover:bg-hover"
             >
-              <span className="text-xl" aria-hidden="true">
-                {icon}
-              </span>
-              <span className="text-xl font-semibold leading-tight text-foreground">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase tracking-wide text-muted">{label}</span>
+                <span
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: accent }}
+                />
+              </div>
+              <span className="text-2xl font-semibold leading-tight text-foreground">
                 {formatValue(key, snapshot)}
                 {formatUnit(key, snapshot) && (
                   <span className="ml-1 text-xs font-normal text-muted">
@@ -113,8 +120,7 @@ export default function HealthSnapshot() {
                   </span>
                 )}
               </span>
-              <span className="text-[11px] uppercase tracking-wide text-muted">{label}</span>
-            </div>
+            </Link>
           ))}
         </div>
       )}

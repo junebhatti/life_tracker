@@ -167,7 +167,46 @@ async function fetchRestingHeartRate(
   return findNestedNumber(points[0], ["beatsPerMinute", "bpm", "value", "restingHeartRate"]);
 }
 
-export type SleepSummary = { hours: number; start: string; end: string };
+/** Minutes spent in each sleep stage, when the device/data source reports them. */
+export type SleepStages = {
+  deepMinutes?: number;
+  lightMinutes?: number;
+  remMinutes?: number;
+  awakeMinutes?: number;
+};
+
+export type SleepSummary = {
+  hours: number;
+  start: string;
+  end: string;
+  minutesAwake?: number;
+  minutesToFallAsleep?: number;
+  /** 0-100. */
+  efficiency?: number;
+  stages?: SleepStages;
+};
+
+/** Best-effort parse of per-stage minutes out of a sleep data point's `summary` object. */
+function parseSleepStages(summary: Record<string, unknown>): SleepStages | undefined {
+  const stageFields: Array<[keyof SleepStages, string[]]> = [
+    ["deepMinutes", ["deep"]],
+    ["lightMinutes", ["light"]],
+    ["remMinutes", ["rem"]],
+    ["awakeMinutes", ["wake", "awake"]],
+  ];
+
+  const stages: SleepStages = {};
+  for (const [outKey, candidateKeys] of stageFields) {
+    for (const key of candidateKeys) {
+      const minutes = readQuantity(summary[key], ["minutes", "minutesSum", "value"]);
+      if (minutes !== undefined) {
+        stages[outKey] = minutes;
+        break;
+      }
+    }
+  }
+  return Object.keys(stages).length > 0 ? stages : undefined;
+}
 
 async function fetchRecentSleep(
   accessToken: string,
@@ -189,15 +228,23 @@ async function fetchRecentSleep(
     `/users/me/dataTypes/sleep/dataPoints:reconcile?${params.toString()}`,
   );
 
+  type Session = {
+    minutes: number;
+    start: string;
+    end: string;
+    summary: Record<string, unknown> | undefined;
+  };
+
   const sessions = (data.dataPoints ?? [])
-    .map((p) => {
+    .map((p): Session | undefined => {
       const sleep = (p.sleep ?? p) as Record<string, unknown>;
       const interval = sleep.interval as { startTime?: string; endTime?: string } | undefined;
-      const minutes = findNestedNumber(sleep.summary, ["minutesAsleep", "minutesInSleepPeriod"]);
+      const summary = sleep.summary as Record<string, unknown> | undefined;
+      const minutes = findNestedNumber(summary, ["minutesAsleep", "minutesInSleepPeriod"]);
       if (minutes === undefined || !interval?.startTime || !interval?.endTime) return undefined;
-      return { minutes, start: interval.startTime, end: interval.endTime };
+      return { minutes, start: interval.startTime, end: interval.endTime, summary };
     })
-    .filter((s): s is { minutes: number; start: string; end: string } => Boolean(s));
+    .filter((s): s is Session => s !== undefined);
 
   if (sessions.length === 0) return undefined;
 
@@ -205,10 +252,16 @@ async function fetchRecentSleep(
   // short nap doesn't get reported in place of last night's sleep.
   sessions.sort((a, b) => b.minutes - a.minutes);
   const longest = sessions[0];
+  const summary = longest.summary;
+
   return {
     hours: Math.round((longest.minutes / 60) * 10) / 10,
     start: longest.start,
     end: longest.end,
+    minutesAwake: summary ? findNestedNumber(summary, ["minutesAwake"]) : undefined,
+    minutesToFallAsleep: summary ? findNestedNumber(summary, ["minutesToFallAsleep"]) : undefined,
+    efficiency: summary ? findNestedNumber(summary, ["efficiency"]) : undefined,
+    stages: summary ? parseSleepStages(summary) : undefined,
   };
 }
 
