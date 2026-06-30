@@ -1,5 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchHealthSnapshot, googleHealthConfigured } from "@/lib/googleHealth";
+import { userIdFromRequest } from "@/lib/serverAuth";
+import { supabaseAdmin, supabaseAdminConfigured } from "@/lib/supabaseAdmin";
+
+/** Civil-day (YYYY-MM-DD) string for the given IANA timezone. */
+function civilDateKey(timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
+}
+
+/** Best-effort: saves today's sleep/RHR/steps so the Trends page has history to graph. */
+async function recordDailyMetrics(
+  request: NextRequest,
+  timezone: string | undefined,
+  snapshot: Awaited<ReturnType<typeof fetchHealthSnapshot>>,
+) {
+  if (!supabaseAdminConfigured()) return;
+  const userId = await userIdFromRequest(request);
+  if (!userId) return;
+
+  const date = civilDateKey(timezone || "UTC");
+  const { error } = await supabaseAdmin()
+    .from("health_metrics_daily")
+    .upsert(
+      {
+        id: `health_${userId}_${date}`,
+        user_id: userId,
+        date,
+        sleep_hours: snapshot.sleep?.hours ?? null,
+        resting_heart_rate: snapshot.restingHeartRate ?? null,
+        steps: snapshot.steps ?? null,
+      },
+      { onConflict: "user_id,date" },
+    );
+  if (error) console.error("Failed to record daily health metrics:", error);
+}
 
 export async function GET(request: NextRequest) {
   if (!googleHealthConfigured()) {
@@ -10,6 +44,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const snapshot = await fetchHealthSnapshot(timezone);
+    await recordDailyMetrics(request, timezone, snapshot);
     return NextResponse.json({ configured: true, snapshot });
   } catch (error) {
     console.error("Google Health snapshot fetch failed:", error);

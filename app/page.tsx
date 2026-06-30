@@ -6,6 +6,7 @@ import SectionHeading from "@/components/SectionHeading";
 import TaskRow from "@/components/TaskRow";
 import CalendarList from "@/components/CalendarList";
 import HealthSnapshot from "@/components/HealthSnapshot";
+import NutritionSnapshot from "@/components/NutritionSnapshot";
 import RoutineTracker from "@/components/RoutineTracker";
 import NewTaskForm from "@/components/NewTaskForm";
 import { useTasks } from "@/components/TaskStore";
@@ -148,10 +149,11 @@ export default function TodayPage() {
             </section>
           </div>
 
-          {/* Right column — routines / habit tracker + health snapshot */}
+          {/* Right column — routines / habit tracker + health + nutrition */}
           <div className="flex w-72 shrink-0 flex-col gap-9">
             <RoutineTracker />
             <HealthSnapshot />
+            <NutritionSnapshot />
           </div>
         </div>
       </main>

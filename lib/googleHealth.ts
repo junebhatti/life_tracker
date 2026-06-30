@@ -212,14 +212,76 @@ async function fetchRecentSleep(
   };
 }
 
+export type NutritionSummary = {
+  calories?: number;
+  proteinGrams?: number;
+  carbsGrams?: number;
+  fatGrams?: number;
+};
+
+/** Pulls a numeric quantity out of a field that may be a flat number or a nested `{ grams/kcal/value: n }` object. */
+function readQuantity(node: unknown, nestedCandidates: string[]): number | undefined {
+  if (typeof node === "number" && Number.isFinite(node)) return node;
+  if (typeof node === "string" && node.trim() !== "" && Number.isFinite(Number(node))) return Number(node);
+  return findNestedNumber(node, nestedCandidates);
+}
+
+async function fetchNutritionToday(
+  accessToken: string,
+  timeZone: string,
+): Promise<NutritionSummary | undefined> {
+  const today = civilDateParts(new Date(), timeZone);
+  const tomorrow = shiftCivilDate(today, 1);
+
+  const data = await healthFetch<RollupResponse>(
+    accessToken,
+    "/users/me/dataTypes/nutrition-log/dataPoints:dailyRollUp",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        range: {
+          start: { date: today },
+          end: { date: tomorrow },
+        },
+        windowSizeDays: 1,
+      }),
+    },
+  );
+
+  const point = data.rollupDataPoints?.[0] as Record<string, unknown> | undefined;
+  if (!point) return undefined;
+
+  const log = (point.nutritionLog ?? point) as Record<string, unknown>;
+  const nutrients = log.nutrients as Record<string, unknown> | undefined;
+
+  const calories = readQuantity(log.energy, ["kcal", "kilocalories", "calories", "sum", "kcalSum"]);
+  const proteinGrams =
+    readQuantity(nutrients?.protein, ["grams", "value", "amount", "sum", "gramsSum"]) ??
+    readQuantity(log.protein, ["grams", "value", "amount", "sum", "gramsSum"]);
+  const carbsGrams = readQuantity(log.totalCarbohydrate, ["grams", "value", "amount", "sum", "gramsSum"]);
+  const fatGrams = readQuantity(log.totalFat, ["grams", "value", "amount", "sum", "gramsSum"]);
+
+  if (
+    calories === undefined &&
+    proteinGrams === undefined &&
+    carbsGrams === undefined &&
+    fatGrams === undefined
+  ) {
+    return undefined;
+  }
+
+  return { calories, proteinGrams, carbsGrams, fatGrams };
+}
+
 export type HealthSnapshot = {
   steps?: number;
   restingHeartRate?: number;
   sleep?: SleepSummary;
+  nutrition?: NutritionSummary;
 };
 
 /** Per-metric fetch failures, keyed by field name — surfaced in the Settings test panel. */
-type SnapshotDebug = Partial<Record<"steps" | "restingHeartRate" | "sleep", string>>;
+type SnapshotDebug = Partial<Record<"steps" | "restingHeartRate" | "sleep" | "nutrition", string>>;
 
 async function fetchHealthSnapshotWithDebug(
   timeZone: string,
@@ -230,7 +292,7 @@ async function fetchHealthSnapshotWithDebug(
   const accessToken = await getAccessToken();
   const debug: SnapshotDebug = {};
 
-  const [steps, restingHeartRate, sleep] = await Promise.all([
+  const [steps, restingHeartRate, sleep, nutrition] = await Promise.all([
     fetchStepsToday(accessToken, timeZone).catch((error) => {
       debug.steps = error instanceof Error ? error.message : String(error);
       return undefined;
@@ -243,9 +305,19 @@ async function fetchHealthSnapshotWithDebug(
       debug.sleep = error instanceof Error ? error.message : String(error);
       return undefined;
     }),
+    fetchNutritionToday(accessToken, timeZone).catch((error) => {
+      debug.nutrition = error instanceof Error ? error.message : String(error);
+      return undefined;
+    }),
   ]);
 
-  return { steps, restingHeartRate, sleep, debug: Object.keys(debug).length ? debug : undefined };
+  return {
+    steps,
+    restingHeartRate,
+    sleep,
+    nutrition,
+    debug: Object.keys(debug).length ? debug : undefined,
+  };
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import SectionHeading from "./SectionHeading";
+import { useAuth } from "./AuthProvider";
 
 type Snapshot = {
   steps?: number;
@@ -36,11 +37,17 @@ function formatUnit(key: (typeof METRICS)[number]["key"], snapshot?: Snapshot) {
 /** Sleep, resting heart rate, and steps synced in from Fitbit via Google Health. */
 export default function HealthSnapshot() {
   const [state, setState] = useState<SnapshotResponse | null>(null);
+  const { session } = useAuth();
+  const token = session?.access_token;
 
   useEffect(() => {
     let cancelled = false;
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    fetch(`/api/health/snapshot?timezone=${encodeURIComponent(timezone)}`)
+    // Sending the session token (when signed in) lets the server record
+    // today's metrics for the Trends page; the widget still works without it.
+    fetch(`/api/health/snapshot?timezone=${encodeURIComponent(timezone)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
       .then((res) => res.json())
       .then((data: SnapshotResponse) => {
         if (!cancelled) setState(data);
@@ -53,7 +60,7 @@ export default function HealthSnapshot() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [token]);
 
   if (state && !state.configured) {
     return (
