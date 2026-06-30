@@ -99,6 +99,27 @@ begin
   end if;
 end $$;
 
+-- One row per civil day, captured whenever the Health snapshot is fetched
+-- successfully, so sleep/RHR/steps can be graphed over time on the Trends page.
+create table if not exists public.health_metrics_daily (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  date text not null,
+  sleep_hours numeric,
+  resting_heart_rate numeric,
+  steps integer,
+  created_at timestamptz not null default now(),
+  unique (user_id, date)
+);
+
+create index if not exists health_metrics_daily_user_id_idx on public.health_metrics_daily (user_id);
+alter table public.health_metrics_daily enable row level security;
+
+drop policy if exists "health_metrics_daily_select_own" on public.health_metrics_daily;
+create policy "health_metrics_daily_select_own" on public.health_metrics_daily for select using (auth.uid() = user_id);
+-- No insert/update/delete policies: only server routes using the service-role
+-- key (which bypasses RLS) write these rows.
+
 -- Plaid access tokens for linked bank/credit accounts. RLS is enabled with
 -- NO policies below, so the anon/authenticated client can never read or
 -- write this table — only server routes using the service-role key (which

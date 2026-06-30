@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import SectionHeading from "./SectionHeading";
+import { useAuth } from "./AuthProvider";
 
 type Snapshot = {
   steps?: number;
@@ -15,13 +16,38 @@ type SnapshotResponse = {
   error?: string;
 };
 
+const METRICS = [
+  { key: "sleep", label: "Sleep", icon: "🌙" },
+  { key: "restingHeartRate", label: "Resting HR", icon: "❤️" },
+  { key: "steps", label: "Steps", icon: "👟" },
+] as const;
+
+function formatValue(key: (typeof METRICS)[number]["key"], snapshot?: Snapshot) {
+  if (key === "sleep") return snapshot?.sleep ? `${snapshot.sleep.hours}h` : "—";
+  if (key === "restingHeartRate")
+    return snapshot?.restingHeartRate ? `${snapshot.restingHeartRate}` : "—";
+  return snapshot?.steps !== undefined ? snapshot.steps.toLocaleString() : "—";
+}
+
+function formatUnit(key: (typeof METRICS)[number]["key"], snapshot?: Snapshot) {
+  if (key === "restingHeartRate" && snapshot?.restingHeartRate) return "bpm";
+  return undefined;
+}
+
 /** Sleep, resting heart rate, and steps synced in from Fitbit via Google Health. */
 export default function HealthSnapshot() {
   const [state, setState] = useState<SnapshotResponse | null>(null);
+  const { session } = useAuth();
+  const token = session?.access_token;
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/health/snapshot")
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Sending the session token (when signed in) lets the server record
+    // today's metrics for the Trends page; the widget still works without it.
+    fetch(`/api/health/snapshot?timezone=${encodeURIComponent(timezone)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
       .then((res) => res.json())
       .then((data: SnapshotResponse) => {
         if (!cancelled) setState(data);
@@ -34,7 +60,7 @@ export default function HealthSnapshot() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [token]);
 
   if (state && !state.configured) {
     return (
@@ -58,9 +84,9 @@ export default function HealthSnapshot() {
       <SectionHeading title="Health" />
 
       {state === null && (
-        <div className="flex flex-col gap-2 py-2">
+        <div className="mt-2 grid grid-cols-3 gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-8 animate-pulse rounded bg-hover" />
+            <div key={i} className="h-24 animate-pulse rounded-xl bg-hover" />
           ))}
         </div>
       )}
@@ -70,25 +96,26 @@ export default function HealthSnapshot() {
       )}
 
       {state && !state.error && (
-        <div className="flex flex-col gap-2 pt-1">
-          <div className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-hover">
-            <span className="text-sm text-foreground">Sleep</span>
-            <span className="text-sm text-muted">
-              {snapshot?.sleep ? `${snapshot.sleep.hours}h` : "—"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-hover">
-            <span className="text-sm text-foreground">Resting HR</span>
-            <span className="text-sm text-muted">
-              {snapshot?.restingHeartRate ? `${snapshot.restingHeartRate} bpm` : "—"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-hover">
-            <span className="text-sm text-foreground">Steps</span>
-            <span className="text-sm text-muted">
-              {snapshot?.steps !== undefined ? snapshot.steps.toLocaleString() : "—"}
-            </span>
-          </div>
+        <div className="mt-2 grid grid-cols-3 gap-3">
+          {METRICS.map(({ key, label, icon }) => (
+            <div
+              key={key}
+              className="flex flex-col items-center justify-center gap-1 rounded-xl border border-border bg-hover/40 px-2 py-4 text-center"
+            >
+              <span className="text-xl" aria-hidden="true">
+                {icon}
+              </span>
+              <span className="text-xl font-semibold leading-tight text-foreground">
+                {formatValue(key, snapshot)}
+                {formatUnit(key, snapshot) && (
+                  <span className="ml-1 text-xs font-normal text-muted">
+                    {formatUnit(key, snapshot)}
+                  </span>
+                )}
+              </span>
+              <span className="text-[11px] uppercase tracking-wide text-muted">{label}</span>
+            </div>
+          ))}
         </div>
       )}
     </section>

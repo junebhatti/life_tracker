@@ -6,6 +6,7 @@ type HealthSnapshot = {
   steps?: number;
   restingHeartRate?: number;
   sleep?: { hours: number; start: string; end: string };
+  nutrition?: { calories?: number; proteinGrams?: number; carbsGrams?: number; fatGrams?: number };
 };
 
 type StatusResponse = {
@@ -13,7 +14,7 @@ type StatusResponse = {
   connected?: boolean;
   snapshot?: HealthSnapshot;
   error?: string;
-  debug?: Partial<Record<"steps" | "restingHeartRate" | "sleep", string>>;
+  debug?: Partial<Record<"steps" | "restingHeartRate" | "sleep" | "nutrition", string>>;
   checkedAt?: string;
 };
 
@@ -23,7 +24,8 @@ export default function HealthIntegrationStatus() {
   const [loading, setLoading] = useState(true);
 
   const runCheck = () => {
-    fetch("/api/health/status")
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    fetch(`/api/health/status?timezone=${encodeURIComponent(timezone)}`)
       .then((res) => res.json())
       .then((data: StatusResponse) => setStatus(data))
       .catch(() => setStatus({ configured: true, connected: false, error: "Request failed" }))
@@ -78,7 +80,8 @@ export default function HealthIntegrationStatus() {
                 <p className="mt-1 text-xs text-muted">
                   Steps today: {status.snapshot.steps ?? "—"} · Resting HR:{" "}
                   {status.snapshot.restingHeartRate ?? "—"} · Sleep:{" "}
-                  {status.snapshot.sleep ? `${status.snapshot.sleep.hours}h` : "—"}
+                  {status.snapshot.sleep ? `${status.snapshot.sleep.hours}h` : "—"} · Calories:{" "}
+                  {status.snapshot.nutrition?.calories ?? "—"}
                 </p>
               )}
               {status.debug && (
