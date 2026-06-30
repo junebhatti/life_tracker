@@ -289,11 +289,11 @@ function toEditableEvent(item: GoogleEventItem): EditableCalendarEvent {
   };
 }
 
-/** How far back/forward the editable agenda page looks. */
-const AGENDA_PAST_DAYS = 7;
-const AGENDA_FUTURE_DAYS = 60;
+/** How far back/forward the editable agenda page looks — wide enough to cover the page's week-by-week navigation. */
+const AGENDA_PAST_DAYS = 90;
+const AGENDA_FUTURE_DAYS = 90;
 /** Raised pool size so individual recurring occurrences aren't dropped — every instance stays editable. */
-const AGENDA_POOL_SIZE = 250;
+const AGENDA_POOL_SIZE = 500;
 
 /** Full editable agenda (unlike fetchUpcomingEvents, keeps every recurring occurrence, not just the soonest). */
 export async function fetchAgendaEvents(): Promise<EditableCalendarEvent[]> {

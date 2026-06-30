@@ -112,18 +112,18 @@ export default function WeatherWidget() {
         {weather?.city ?? (error ? "Weather" : "Locating…")}
       </p>
 
-      <div className="mt-1 flex items-baseline justify-between gap-3">
+      <div className="mt-1 flex items-baseline gap-3">
         <p className="text-3xl font-semibold tracking-tight text-foreground">
           {time ?? <span className="inline-block h-7 w-24 animate-pulse rounded bg-hover align-middle" />}
         </p>
 
         {weather ? (
-          <p className="text-right text-sm text-foreground">
+          <p className="text-sm text-foreground">
             <span className="text-xl font-medium">{weather.tempF}°</span>
             <span className="ml-2 text-muted">{weatherLabel(weather.code)}</span>
           </p>
         ) : error ? (
-          <p className="text-right text-xs text-muted">{error}</p>
+          <p className="text-xs text-muted">{error}</p>
         ) : (
           <div className="h-6 w-20 animate-pulse rounded bg-hover" />
         )}
