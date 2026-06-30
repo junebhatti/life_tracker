@@ -4,7 +4,7 @@
 // events get merged into one list. See app/api/calendar/auth and
 // app/api/calendar/callback for how GOOGLE_REFRESH_TOKEN(_2) get minted.
 
-import type { CalendarEvent } from "@/lib/data";
+import type { CalendarEvent, CalendarEventInput, EditableCalendarEvent } from "@/lib/data";
 import { refreshGoogleAccessToken } from "@/lib/googleOAuth";
 
 /** Vercel functions run in UTC; events are displayed in this zone instead. */
@@ -16,6 +16,23 @@ type GoogleAccount = {
   refreshToken: string;
   calendarId: string;
 };
+
+/** Account keys for whichever accounts are connected — used by the new-event account picker. */
+export function accountKeys(): string[] {
+  return configuredAccounts().map((a) => a.key);
+}
+
+function accountByKey(key: string): GoogleAccount | undefined {
+  return configuredAccounts().find((a) => a.key === key);
+}
+
+/** Splits a namespaced event id (e.g. "1:abc123") back into its account and the raw Google event id. */
+function splitEventId(id: string): { account: GoogleAccount; rawId: string } | undefined {
+  const sep = id.indexOf(":");
+  if (sep === -1) return undefined;
+  const account = accountByKey(id.slice(0, sep));
+  return account ? { account, rawId: id.slice(sep + 1) } : undefined;
+}
 
 function configuredAccounts(): GoogleAccount[] {
   const accounts: GoogleAccount[] = [];
@@ -43,6 +60,7 @@ type GoogleEventItem = {
   summary?: string;
   location?: string;
   start?: { date?: string; dateTime?: string; timeZone?: string };
+  end?: { date?: string; dateTime?: string; timeZone?: string };
 };
 
 export function googleCalendarConfigured(): boolean {
@@ -173,6 +191,7 @@ async function fetchAccountEvents(
   account: GoogleAccount,
   timeMin: Date,
   timeMax: Date,
+  maxResults = FETCH_POOL_SIZE,
 ): Promise<GoogleEventItem[]> {
   const accessToken = await refreshGoogleAccessToken(account.refreshToken);
 
@@ -181,7 +200,7 @@ async function fetchAccountEvents(
     timeMax: timeMax.toISOString(),
     singleEvents: "true",
     orderBy: "startTime",
-    maxResults: String(FETCH_POOL_SIZE),
+    maxResults: String(maxResults),
   });
 
   const res = await fetch(
@@ -252,6 +271,134 @@ export async function fetchUpcomingEvents(maxResults = MAX_UP_NEXT): Promise<Cal
   }
 
   return deduped.map((item) => toCalendarEvent(item, todayKey));
+}
+
+function toEditableEvent(item: GoogleEventItem): EditableCalendarEvent {
+  const allDay = Boolean(item.start?.date);
+  const sep = item.id.indexOf(":");
+  return {
+    id: item.id,
+    title: item.summary || "(No title)",
+    location: item.location,
+    allDay,
+    start: allDay ? (item.start?.date ?? "") : (item.start?.dateTime ?? ""),
+    end: allDay
+      ? (item.end?.date ?? item.start?.date ?? "")
+      : (item.end?.dateTime ?? item.start?.dateTime ?? ""),
+    accountKey: sep === -1 ? "" : item.id.slice(0, sep),
+  };
+}
+
+/** How far back/forward the editable agenda page looks. */
+const AGENDA_PAST_DAYS = 7;
+const AGENDA_FUTURE_DAYS = 60;
+/** Raised pool size so individual recurring occurrences aren't dropped — every instance stays editable. */
+const AGENDA_POOL_SIZE = 250;
+
+/** Full editable agenda (unlike fetchUpcomingEvents, keeps every recurring occurrence, not just the soonest). */
+export async function fetchAgendaEvents(): Promise<EditableCalendarEvent[]> {
+  const accounts = configuredAccounts();
+  const now = new Date();
+  const timeMin = new Date(now.getTime() - AGENDA_PAST_DAYS * 24 * 60 * 60 * 1000);
+  const timeMax = new Date(now.getTime() + AGENDA_FUTURE_DAYS * 24 * 60 * 60 * 1000);
+
+  const results = await Promise.allSettled(
+    accounts.map((account) => fetchAccountEvents(account, timeMin, timeMax, AGENDA_POOL_SIZE)),
+  );
+
+  const allItems: GoogleEventItem[] = [];
+  const failures: string[] = [];
+  results.forEach((result, i) => {
+    if (result.status === "fulfilled") {
+      allItems.push(...result.value);
+    } else {
+      const reason =
+        result.reason instanceof Error ? result.reason.message : String(result.reason);
+      failures.push(`Account ${accounts[i].key}: ${reason}`);
+    }
+  });
+
+  if (allItems.length === 0 && failures.length > 0) {
+    throw new Error(failures.join("; "));
+  }
+  if (failures.length > 0) {
+    console.error("Google Calendar: one or more accounts failed to fetch agenda:", failures.join("; "));
+  }
+
+  allItems.sort((a, b) => eventStartMs(a) - eventStartMs(b));
+  return allItems.map(toEditableEvent);
+}
+
+function eventBody(input: CalendarEventInput) {
+  return {
+    summary: input.title,
+    location: input.location || undefined,
+    start: input.allDay ? { date: input.start } : { dateTime: input.start },
+    end: input.allDay ? { date: input.end } : { dateTime: input.end },
+  };
+}
+
+export async function createCalendarEvent(input: CalendarEventInput): Promise<EditableCalendarEvent> {
+  const account = accountByKey(input.accountKey);
+  if (!account) throw new Error("Unknown calendar account");
+  const accessToken = await refreshGoogleAccessToken(account.refreshToken);
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(account.calendarId)}/events`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(eventBody(input)),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Failed to create event (${res.status}): ${detail}`);
+  }
+  const item = (await res.json()) as GoogleEventItem;
+  return toEditableEvent({ ...item, id: `${account.key}:${item.id}` });
+}
+
+export async function updateCalendarEvent(
+  id: string,
+  input: CalendarEventInput,
+): Promise<EditableCalendarEvent> {
+  const split = splitEventId(id);
+  if (!split) throw new Error("Unknown calendar event");
+  const { account, rawId } = split;
+  const accessToken = await refreshGoogleAccessToken(account.refreshToken);
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(account.calendarId)}/events/${encodeURIComponent(rawId)}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(eventBody(input)),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Failed to update event (${res.status}): ${detail}`);
+  }
+  const item = (await res.json()) as GoogleEventItem;
+  return toEditableEvent({ ...item, id: `${account.key}:${item.id}` });
+}
+
+export async function deleteCalendarEvent(id: string): Promise<void> {
+  const split = splitEventId(id);
+  if (!split) throw new Error("Unknown calendar event");
+  const { account, rawId } = split;
+  const accessToken = await refreshGoogleAccessToken(account.refreshToken);
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(account.calendarId)}/events/${encodeURIComponent(rawId)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  // Google returns 204 on success and 410 if it was already deleted — both count as done.
+  if (!res.ok && res.status !== 410) {
+    const detail = await res.text();
+    throw new Error(`Failed to delete event (${res.status}): ${detail}`);
+  }
 }
 
 export type AccountStatus = {
