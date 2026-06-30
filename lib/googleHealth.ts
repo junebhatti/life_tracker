@@ -13,12 +13,11 @@
 import { refreshGoogleAccessToken } from "@/lib/googleOAuth";
 
 const API_BASE = "https://health.googleapis.com/v4";
-const MS_PER_HOUR = 60 * 60 * 1000;
 
-/** Window to look back for "last night's" sleep, regardless of what time it is now. */
-const SLEEP_WINDOW_HOURS = 48;
+/** Civil-day window to look back for "last night's" sleep, regardless of what time it is now. */
+const SLEEP_WINDOW_DAYS = 2;
 /** Resting heart rate is typically a once-a-day measurement. */
-const RESTING_HR_WINDOW_HOURS = 7 * 24;
+const RESTING_HR_WINDOW_DAYS = 7;
 
 export function googleHealthConfigured(): boolean {
   return Boolean(
@@ -58,8 +57,10 @@ async function healthFetch<T>(
   return res.json() as Promise<T>;
 }
 
-/** Local Y/M/D for the steps rollup, which is civil-time based (not UTC). */
-function civilDateParts(date: Date, timeZone: string): { year: number; month: number; day: number } {
+type CivilDate = { year: number; month: number; day: number };
+
+/** Local Y/M/D for civil-time-based endpoints/filters (not UTC). */
+function civilDateParts(date: Date, timeZone: string): CivilDate {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
@@ -70,7 +71,33 @@ function civilDateParts(date: Date, timeZone: string): { year: number; month: nu
   return { year: get("year"), month: get("month"), day: get("day") };
 }
 
+/** Shifts a civil date by N days, correctly rolling over month/year boundaries. */
+function shiftCivilDate(parts: CivilDate, days: number): CivilDate {
+  const d = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days));
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+
+function civilDateString(parts: CivilDate): string {
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
 const TIME_ZONE = process.env.GOOGLE_HEALTH_TIMEZONE || "America/Denver";
+
+/** Recursively searches an object's values for the first key matching any candidate field name. */
+function findNestedNumber(value: unknown, candidates: string[]): number | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of candidates) {
+    const v = record[key];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
+  }
+  for (const nested of Object.values(record)) {
+    const found = findNestedNumber(nested, candidates);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
 
 type RollupResponse = {
   rollupDataPoints?: Array<{ steps?: { countSum?: string } }>;
@@ -78,8 +105,7 @@ type RollupResponse = {
 
 async function fetchStepsToday(accessToken: string): Promise<number | undefined> {
   const today = civilDateParts(new Date(), TIME_ZONE);
-  // Civil dates normalize day overflow correctly (e.g. day 31 + 1 rolls into next month).
-  const tomorrow = new Date(Date.UTC(today.year, today.month - 1, today.day + 1));
+  const tomorrow = shiftCivilDate(today, 1);
 
   const data = await healthFetch<RollupResponse>(
     accessToken,
@@ -89,13 +115,7 @@ async function fetchStepsToday(accessToken: string): Promise<number | undefined>
       body: JSON.stringify({
         range: {
           start: { date: today },
-          end: {
-            date: {
-              year: tomorrow.getUTCFullYear(),
-              month: tomorrow.getUTCMonth() + 1,
-              day: tomorrow.getUTCDate(),
-            },
-          },
+          end: { date: tomorrow },
         },
         windowSizeDays: 1,
       }),
@@ -108,82 +128,65 @@ async function fetchStepsToday(accessToken: string): Promise<number | undefined>
   return Number.isFinite(n) ? n : undefined;
 }
 
-type RestingHeartRatePoint = {
-  restingHeartRate?: {
-    beatsPerMinute?: number;
-    bpm?: number;
-    time?: { physicalTime?: string };
-    sampleTime?: { physicalTime?: string };
-  };
-};
-type RestingHeartRateResponse = { dataPoints?: RestingHeartRatePoint[] };
+type ReconcileResponse = { dataPoints?: Record<string, unknown>[] };
 
 async function fetchRestingHeartRate(accessToken: string): Promise<number | undefined> {
-  const since = new Date(Date.now() - RESTING_HR_WINDOW_HOURS * MS_PER_HOUR);
+  const today = civilDateParts(new Date(), TIME_ZONE);
+  const start = civilDateString(shiftCivilDate(today, -(RESTING_HR_WINDOW_DAYS - 1)));
+  const end = civilDateString(shiftCivilDate(today, 1));
+
   const params = new URLSearchParams({
-    filter: `resting_heart_rate.time.physical_time >= "${since.toISOString()}"`,
-    pageSize: "50",
+    filter: `daily_resting_heart_rate.interval.civil_start_time >= "${start}" AND daily_resting_heart_rate.interval.civil_start_time < "${end}"`,
+    pageSize: "25",
   });
 
-  const data = await healthFetch<RestingHeartRateResponse>(
+  const data = await healthFetch<ReconcileResponse>(
     accessToken,
-    `/users/me/dataTypes/resting-heart-rate/dataPoints?${params.toString()}`,
+    `/users/me/dataTypes/daily-resting-heart-rate/dataPoints:reconcile?${params.toString()}`,
   );
 
-  const candidates = (data.dataPoints ?? [])
-    .map((p) => {
-      const rhr = p.restingHeartRate;
-      const bpm = rhr?.beatsPerMinute ?? rhr?.bpm;
-      const time = rhr?.time?.physicalTime ?? rhr?.sampleTime?.physicalTime;
-      if (typeof bpm !== "number" || !time) return undefined;
-      return { bpm, time };
-    })
-    .filter((c): c is { bpm: number; time: string } => Boolean(c));
+  const points = data.dataPoints ?? [];
+  if (points.length === 0) return undefined;
 
-  if (candidates.length === 0) return undefined;
-  candidates.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-  return candidates[0].bpm;
+  return findNestedNumber(points[0], ["beatsPerMinute", "bpm", "value", "restingHeartRate"]);
 }
-
-type SleepPoint = {
-  sleep?: { interval?: { startTime?: string; endTime?: string } };
-  interval?: { startTime?: string; endTime?: string };
-};
-type SleepResponse = { dataPoints?: SleepPoint[] };
 
 export type SleepSummary = { hours: number; start: string; end: string };
 
 async function fetchRecentSleep(accessToken: string): Promise<SleepSummary | undefined> {
-  const since = new Date(Date.now() - SLEEP_WINDOW_HOURS * MS_PER_HOUR);
+  const today = civilDateParts(new Date(), TIME_ZONE);
+  const start = civilDateString(shiftCivilDate(today, -(SLEEP_WINDOW_DAYS - 1)));
+  const end = civilDateString(shiftCivilDate(today, 1));
+
   const params = new URLSearchParams({
-    filter: `sleep.interval.start_time >= "${since.toISOString()}"`,
+    filter: `sleep.interval.civil_start_time >= "${start}" AND sleep.interval.civil_start_time < "${end}"`,
     pageSize: "20",
+    dataSourceFamily: "users/me/dataSourceFamilies/google-wearables",
   });
 
-  const data = await healthFetch<SleepResponse>(
+  const data = await healthFetch<ReconcileResponse>(
     accessToken,
-    `/users/me/dataTypes/sleep/dataPoints?${params.toString()}`,
+    `/users/me/dataTypes/sleep/dataPoints:reconcile?${params.toString()}`,
   );
 
   const sessions = (data.dataPoints ?? [])
     .map((p) => {
-      const interval = p.sleep?.interval ?? p.interval;
-      const start = interval?.startTime;
-      const end = interval?.endTime;
-      if (!start || !end) return undefined;
-      const ms = new Date(end).getTime() - new Date(start).getTime();
-      return { start, end, ms };
+      const sleep = (p.sleep ?? p) as Record<string, unknown>;
+      const interval = sleep.interval as { startTime?: string; endTime?: string } | undefined;
+      const minutes = findNestedNumber(sleep.summary, ["minutesAsleep", "minutesInSleepPeriod"]);
+      if (minutes === undefined || !interval?.startTime || !interval?.endTime) return undefined;
+      return { minutes, start: interval.startTime, end: interval.endTime };
     })
-    .filter((s): s is { start: string; end: string; ms: number } => Boolean(s));
+    .filter((s): s is { minutes: number; start: string; end: string } => Boolean(s));
 
   if (sessions.length === 0) return undefined;
 
   // The longest session in the window is treated as the main sleep, so a
   // short nap doesn't get reported in place of last night's sleep.
-  sessions.sort((a, b) => b.ms - a.ms);
+  sessions.sort((a, b) => b.minutes - a.minutes);
   const longest = sessions[0];
   return {
-    hours: Math.round((longest.ms / MS_PER_HOUR) * 10) / 10,
+    hours: Math.round((longest.minutes / 60) * 10) / 10,
     start: longest.start,
     end: longest.end,
   };
