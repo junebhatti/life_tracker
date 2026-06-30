@@ -135,8 +135,9 @@ async function fetchRestingHeartRate(accessToken: string): Promise<number | unde
   const start = civilDateString(shiftCivilDate(today, -(RESTING_HR_WINDOW_DAYS - 1)));
   const end = civilDateString(shiftCivilDate(today, 1));
 
+  // Daily-kind data types filter on a plain civil date, not interval.civil_start_time.
   const params = new URLSearchParams({
-    filter: `daily_resting_heart_rate.interval.civil_start_time >= "${start}" AND daily_resting_heart_rate.interval.civil_start_time < "${end}"`,
+    filter: `daily_resting_heart_rate.date >= "${start}" AND daily_resting_heart_rate.date < "${end}"`,
     pageSize: "25",
   });
 
@@ -158,8 +159,9 @@ async function fetchRecentSleep(accessToken: string): Promise<SleepSummary | und
   const start = civilDateString(shiftCivilDate(today, -(SLEEP_WINDOW_DAYS - 1)));
   const end = civilDateString(shiftCivilDate(today, 1));
 
+  // Session-kind data types only support filtering on civil_end_time, not civil_start_time.
   const params = new URLSearchParams({
-    filter: `sleep.interval.civil_start_time >= "${start}" AND sleep.interval.civil_start_time < "${end}"`,
+    filter: `sleep.interval.civil_end_time >= "${start}" AND sleep.interval.civil_end_time < "${end}"`,
     pageSize: "20",
     dataSourceFamily: "users/me/dataSourceFamilies/google-wearables",
   });
