@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 type AccountStatus = {
   key: string;
   calendarId: string;
+  label?: string;
   connected: boolean;
   eventCount?: number;
   error?: string;
@@ -16,8 +17,9 @@ type StatusResponse = {
   checkedAt?: string;
 };
 
-function accountLabel(key: string) {
-  return key === "2" ? "Second account" : "First account";
+function accountLabel(account: AccountStatus) {
+  if (account.label) return account.label;
+  return account.key === "2" ? "Second account" : "First account";
 }
 
 /** Test panel for the Google Calendar integration: which accounts are connected and whether they're syncing. */
@@ -82,7 +84,7 @@ export default function CalendarIntegrationStatus() {
               className="flex items-start justify-between rounded-md bg-hover px-3 py-2"
             >
               <div>
-                <p className="text-sm text-foreground">{accountLabel(account.key)}</p>
+                <p className="text-sm text-foreground">{accountLabel(account)}</p>
                 <p className="text-xs text-muted">{account.calendarId}</p>
                 {account.error && (
                   <p className="mt-1 break-all font-mono text-[11px] text-muted/70">

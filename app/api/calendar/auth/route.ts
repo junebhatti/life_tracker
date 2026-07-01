@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+// calendar.events grants read + write access to events (not calendar list/settings),
+// which is enough for the agenda view and create/update/delete.
+const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 
 /** Kicks off the one-time consent flow that mints a refresh token. */
 export async function GET(request: NextRequest) {

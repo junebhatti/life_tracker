@@ -1,0 +1,68 @@
+export type Task = {
+  id: string;
+  title: string;
+  done: boolean;
+  starred: boolean;
+  projectName?: string;
+  projectColor?: string;
+  dueDate?: string;
+  dueLabel?: string;
+  overdue?: boolean;
+  recurring?: boolean;
+};
+
+export type AgendaEvent = {
+  id: string;
+  title: string;
+  day?: string;
+  time: string;
+  location?: string;
+};
+
+export type ProjectGroup = "Active" | "Retainers" | "Areas";
+
+export type Project = {
+  id: string;
+  name: string;
+  color: string;
+  group: ProjectGroup;
+  meta: string;
+};
+
+export type Person = {
+  id: string;
+  name: string;
+  org?: string;
+  noteCount: number;
+};
+
+export type LibraryCategory = "Notes" | "Quotes" | "Journal" | "Books" | "Inventory";
+
+export type LibraryNote = {
+  id: string;
+  category: LibraryCategory;
+  label: string;
+  sub?: string;
+  date: string;
+  body: string;
+  images?: number;
+  tags: string[];
+};
+
+type ScrapItemBase = {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h?: number;
+  rot?: number;
+};
+
+export type ScrapImageItem = ScrapItemBase & { type: "img"; label: string };
+export type ScrapQuoteItem = ScrapItemBase & { type: "quote"; text: string; source: string };
+export type ScrapNoteItem = ScrapItemBase & { type: "note"; text: string };
+export type ScrapItem = ScrapImageItem | ScrapQuoteItem | ScrapNoteItem;
+
+export type LibraryFilter = "All" | LibraryCategory | "People";
+
+export type CaptureKind = "task" | "quote" | "journal" | "note";

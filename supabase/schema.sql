@@ -120,6 +120,27 @@ create policy "health_metrics_daily_select_own" on public.health_metrics_daily f
 -- No insert/update/delete policies: only server routes using the service-role
 -- key (which bypasses RLS) write these rows.
 
+-- Scrapbook items — freeform canvas cards shared across web and mobile.
+-- Uses an `owner` text field instead of user_id FK so a single row always
+-- represents "this installation's" scrapbook without requiring Supabase Auth.
+-- All access goes through service-role API routes (no RLS needed).
+create table if not exists public.scrap_items (
+  id text primary key,
+  owner text not null default 'default',
+  type text not null,
+  x numeric not null default 0,
+  y numeric not null default 0,
+  w numeric not null default 200,
+  h numeric,
+  rot numeric,
+  label text,
+  text text,
+  source text,
+  url text,
+  created_at timestamptz not null default now()
+);
+create index if not exists scrap_items_owner_idx on public.scrap_items (owner);
+
 -- Plaid access tokens for linked bank/credit accounts. RLS is enabled with
 -- NO policies below, so the anon/authenticated client can never read or
 -- write this table — only server routes using the service-role key (which

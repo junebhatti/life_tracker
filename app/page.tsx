@@ -8,6 +8,7 @@ import CalendarList from "@/components/CalendarList";
 import HealthSnapshot from "@/components/HealthSnapshot";
 import NutritionSnapshot from "@/components/NutritionSnapshot";
 import RoutineTracker from "@/components/RoutineTracker";
+import WeatherWidget from "@/components/WeatherWidget";
 import NewTaskForm from "@/components/NewTaskForm";
 import { useTasks } from "@/components/TaskStore";
 import { useState } from "react";
@@ -149,8 +150,9 @@ export default function TodayPage() {
             </section>
           </div>
 
-          {/* Right column — routines / habit tracker + health + nutrition */}
+          {/* Right column — time/weather + routines / habit tracker + health + nutrition */}
           <div className="flex w-72 shrink-0 flex-col gap-9">
+            <WeatherWidget />
             <RoutineTracker />
             <HealthSnapshot />
             <NutritionSnapshot />

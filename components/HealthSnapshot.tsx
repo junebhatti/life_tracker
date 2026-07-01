@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import SectionHeading from "./SectionHeading";
 import { useAuth } from "./AuthProvider";
 
@@ -17,24 +18,25 @@ type SnapshotResponse = {
 };
 
 const METRICS = [
-  { key: "sleep", label: "Sleep", icon: "🌙" },
-  { key: "restingHeartRate", label: "Resting HR", icon: "❤️" },
-  { key: "steps", label: "Steps", icon: "👟" },
+  { key: "sleep", label: "Sleep" },
+  { key: "restingHeartRate", label: "Resting HR" },
+  { key: "steps", label: "Steps" },
 ] as const;
 
 function formatValue(key: (typeof METRICS)[number]["key"], snapshot?: Snapshot) {
-  if (key === "sleep") return snapshot?.sleep ? `${snapshot.sleep.hours}h` : "—";
+  if (key === "sleep") return snapshot?.sleep ? `${snapshot.sleep.hours}` : "—";
   if (key === "restingHeartRate")
     return snapshot?.restingHeartRate ? `${snapshot.restingHeartRate}` : "—";
   return snapshot?.steps !== undefined ? snapshot.steps.toLocaleString() : "—";
 }
 
 function formatUnit(key: (typeof METRICS)[number]["key"], snapshot?: Snapshot) {
+  if (key === "sleep" && snapshot?.sleep) return "h";
   if (key === "restingHeartRate" && snapshot?.restingHeartRate) return "bpm";
   return undefined;
 }
 
-/** Sleep, resting heart rate, and steps synced in from Fitbit via Google Health. */
+/** Sleep, resting heart rate, and steps synced in from Fitbit via Google Health. Click through for the full dashboard. */
 export default function HealthSnapshot() {
   const [state, setState] = useState<SnapshotResponse | null>(null);
   const { session } = useAuth();
@@ -44,7 +46,7 @@ export default function HealthSnapshot() {
     let cancelled = false;
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     // Sending the session token (when signed in) lets the server record
-    // today's metrics for the Trends page; the widget still works without it.
+    // today's metrics for the health history; the widget still works without it.
     fetch(`/api/health/snapshot?timezone=${encodeURIComponent(timezone)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
@@ -66,7 +68,7 @@ export default function HealthSnapshot() {
     return (
       <section>
         <SectionHeading title="Health" />
-        <p className="px-2 py-3 text-sm text-muted">
+        <p className="px-1 py-3 text-sm text-muted">
           Not connected.{" "}
           <a href="/api/health/auth" className="text-foreground underline underline-offset-2">
             Connect Google Health
@@ -81,42 +83,55 @@ export default function HealthSnapshot() {
 
   return (
     <section>
-      <SectionHeading title="Health" />
+      <SectionHeading
+        title="Health"
+        action={
+          <Link href="/health" className="transition-colors hover:text-foreground">
+            View all →
+          </Link>
+        }
+      />
 
       {state === null && (
-        <div className="mt-2 grid grid-cols-3 gap-3">
+        <div className="flex flex-col">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl bg-hover" />
-          ))}
-        </div>
-      )}
-
-      {state && state.error && (
-        <p className="px-2 py-3 text-sm text-muted">{state.error}</p>
-      )}
-
-      {state && !state.error && (
-        <div className="mt-2 grid grid-cols-3 gap-3">
-          {METRICS.map(({ key, label, icon }) => (
             <div
-              key={key}
-              className="flex flex-col items-center justify-center gap-1 rounded-xl border border-border bg-hover/40 px-2 py-4 text-center"
+              key={i}
+              className="flex items-center justify-between border-b border-border py-3 last:border-0"
             >
-              <span className="text-xl" aria-hidden="true">
-                {icon}
-              </span>
-              <span className="text-xl font-semibold leading-tight text-foreground">
-                {formatValue(key, snapshot)}
-                {formatUnit(key, snapshot) && (
-                  <span className="ml-1 text-xs font-normal text-muted">
-                    {formatUnit(key, snapshot)}
-                  </span>
-                )}
-              </span>
-              <span className="text-[11px] uppercase tracking-wide text-muted">{label}</span>
+              <div className="h-3 w-16 animate-pulse rounded bg-hover" />
+              <div className="h-5 w-10 animate-pulse rounded bg-hover" />
             </div>
           ))}
         </div>
+      )}
+
+      {state && state.error && <p className="px-1 py-3 text-sm text-muted">{state.error}</p>}
+
+      {state && !state.error && (
+        <Link href="/health" className="group block">
+          <div className="flex flex-col">
+            {METRICS.map(({ key, label }) => (
+              <div
+                key={key}
+                className="flex items-baseline justify-between border-b border-border py-3 last:border-0"
+              >
+                <span className="text-[11px] uppercase tracking-wider text-muted">{label}</span>
+                <span className="text-xl font-medium leading-none text-foreground">
+                  {formatValue(key, snapshot)}
+                  {formatUnit(key, snapshot) && (
+                    <span className="ml-1 text-xs font-normal text-muted">
+                      {formatUnit(key, snapshot)}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-muted transition-colors group-hover:text-foreground">
+            Click any metric to go further →
+          </p>
+        </Link>
       )}
     </section>
   );

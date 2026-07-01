@@ -10,11 +10,17 @@ export default function LoginScreen() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Always redirect back to the production URL (if configured) so the session
+  // persists in localStorage on the canonical domain rather than a one-off
+  // Vercel preview subdomain that will change on the next deployment.
+  const appOrigin =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? window.location.origin;
+
   const signInWithGoogle = async () => {
     setError(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: appOrigin },
     });
     if (error) setError(error.message);
   };
@@ -25,7 +31,7 @@ export default function LoginScreen() {
     setError(null);
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: appOrigin },
     });
     setSending(false);
     if (error) {

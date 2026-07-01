@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import SectionHeading from "./SectionHeading";
 import type { CalendarEvent } from "@/lib/data";
 
@@ -51,14 +52,9 @@ export default function CalendarList() {
       <SectionHeading
         title={`Up Next · ${rangeLabel}`}
         action={
-          <a
-            href="https://calendar.google.com"
-            target="_blank"
-            rel="noreferrer"
-            className="transition-colors hover:text-foreground"
-          >
+          <Link href="/calendar" className="transition-colors hover:text-foreground">
             View all →
-          </a>
+          </Link>
         }
       />
 
