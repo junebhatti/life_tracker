@@ -12,7 +12,7 @@ import {
 import { supabase } from "../lib/supabase";
 import { colors, fonts } from "../theme";
 
-const SUPABASE_URL = (process.env as Record<string, string | undefined>)["EXPO_PUBLIC_SUPABASE_URL"] ?? "";
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 
 type Step = "email" | "otp";
 
