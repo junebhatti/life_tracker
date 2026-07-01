@@ -15,6 +15,8 @@ type GoogleAccount = {
   key: string;
   refreshToken: string;
   calendarId: string;
+  /** Human-readable label shown in Settings (e.g. the Google account email). */
+  label?: string;
 };
 
 /** Account keys for whichever accounts are connected — used by the new-event account picker. */
@@ -41,6 +43,7 @@ function configuredAccounts(): GoogleAccount[] {
       key: "1",
       refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
       calendarId: process.env.GOOGLE_CALENDAR_ID || "primary",
+      label: process.env.GOOGLE_ACCOUNT_LABEL,
     });
   }
   if (process.env.GOOGLE_REFRESH_TOKEN_2) {
@@ -48,6 +51,7 @@ function configuredAccounts(): GoogleAccount[] {
       key: "2",
       refreshToken: process.env.GOOGLE_REFRESH_TOKEN_2,
       calendarId: process.env.GOOGLE_CALENDAR_ID_2 || "primary",
+      label: process.env.GOOGLE_ACCOUNT_LABEL_2,
     });
   }
   return accounts;
@@ -404,6 +408,7 @@ export async function deleteCalendarEvent(id: string): Promise<void> {
 export type AccountStatus = {
   key: string;
   calendarId: string;
+  label?: string;
   connected: boolean;
   /** Number of events found in the same window the Up Next feed queries. */
   eventCount?: number;
@@ -422,6 +427,7 @@ export async function checkAccountsStatus(): Promise<AccountStatus[]> {
         return {
           key: account.key,
           calendarId: account.calendarId,
+          label: account.label,
           connected: true,
           eventCount: items.length,
         };
@@ -429,6 +435,7 @@ export async function checkAccountsStatus(): Promise<AccountStatus[]> {
         return {
           key: account.key,
           calendarId: account.calendarId,
+          label: account.label,
           connected: false,
           error: error instanceof Error ? error.message : String(error),
         };
