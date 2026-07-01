@@ -19,7 +19,12 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "themeColor": "#f6f1ed",
+      "backgroundColor": "#f6f1ed",
+      "display": "standalone",
+      "orientation": "portrait",
+      "shortName": "Life Tracker"
     }
   }
 }
