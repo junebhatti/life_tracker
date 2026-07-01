@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 
-const API_URL = (process.env as Record<string, string | undefined>)["EXPO_PUBLIC_API_URL"] ?? "";
-const SCRAP_KEY = (process.env as Record<string, string | undefined>)["EXPO_PUBLIC_SCRAPBOOK_KEY"] ?? "";
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "";
+const SCRAP_KEY = process.env.EXPO_PUBLIC_SCRAPBOOK_KEY ?? "";
 function scrapHeaders(): Record<string, string> {
   return SCRAP_KEY ? { "x-scrapbook-key": SCRAP_KEY } : {};
 }
