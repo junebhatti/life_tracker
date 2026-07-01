@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 import type { Task } from "../types";
@@ -6,13 +6,39 @@ import { useAppState } from "../state/AppState";
 
 export default function TaskRow({ task }: { task: Task }) {
   const { toggleTaskDone, toggleTaskStar } = useAppState();
+  const [pendingDone, setPendingDone] = useState(false);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+
+  const visuallyDone = task.done || pendingDone;
+
+  function handleToggle() {
+    if (task.done) {
+      toggleTaskDone(task.id);
+      return;
+    }
+    if (pendingDone) {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+      undoTimer.current = null;
+      setPendingDone(false);
+      return;
+    }
+    setPendingDone(true);
+    undoTimer.current = setTimeout(() => {
+      toggleTaskDone(task.id);
+      setPendingDone(false);
+      undoTimer.current = null;
+    }, 1500);
+  }
+
   return (
     <View style={styles.row}>
       <Pressable
-        style={[styles.checkbox, task.done && styles.checkboxDone]}
-        onPress={() => toggleTaskDone(task.id)}
+        style={[styles.checkbox, visuallyDone && styles.checkboxDone]}
+        onPress={handleToggle}
       >
-        {task.done ? <View style={styles.checkboxFill} /> : null}
+        {visuallyDone ? <View style={styles.checkboxFill} /> : null}
       </Pressable>
       <View style={styles.body}>
         <Text style={[styles.title, task.done && styles.titleDone]}>{task.title}</Text>
@@ -36,6 +62,11 @@ export default function TaskRow({ task }: { task: Task }) {
           {task.starred ? "★" : "☆"}
         </Text>
       </Pressable>
+      {pendingDone ? (
+        <Pressable onPress={handleToggle} hitSlop={8} style={styles.undoBtn}>
+          <Text style={styles.undoText}>Undo</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -110,5 +141,14 @@ const styles = StyleSheet.create({
   },
   starHollow: {
     color: "#d3cabf",
+  },
+  undoBtn: {
+    marginLeft: 6,
+  },
+  undoText: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    color: colors.textTertiary,
+    textDecorationLine: "underline",
   },
 });

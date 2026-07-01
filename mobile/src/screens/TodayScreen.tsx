@@ -10,6 +10,11 @@ function todayTitle(): string {
   return new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
+function timezoneLabel(): string {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return tz.split("/").pop()?.replace(/_/g, " ") ?? tz;
+}
+
 export default function TodayScreen() {
   const { tasks, agenda } = useAppState();
   const starred = tasks.filter((t) => t.starred && !t.done).slice(0, 3);
@@ -18,7 +23,7 @@ export default function TodayScreen() {
 
   return (
     <View>
-      <PageHeader label="Today" title={todayTitle()} sub="America/Denver" />
+      <PageHeader label="Today" title={todayTitle()} sub={timezoneLabel()} />
 
       <Text style={styles.sectionLabel}>Top 3 for Today</Text>
       {starred.map((t) => (

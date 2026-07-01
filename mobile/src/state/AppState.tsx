@@ -19,8 +19,6 @@ import type {
   Task,
 } from "../types";
 
-const DEMO_TRANSCRIPT =
-  "Quick note to self — remember to follow up on the Fetter Pools report and grab groceries on the way home.";
 
 // ---------------------------------------------------------------------------
 // Supabase row types
@@ -155,15 +153,13 @@ type AppStateValue = {
   selectedNoteId: string | null;
   openNote: (id: string | null) => void;
   updateNote: (id: string, patch: Partial<LibraryNote>) => void;
-  capture: "text" | "voice" | null;
+  capture: "text" | null;
   draft: string;
   setDraft: (s: string) => void;
-  openCapture: (kind: "text" | "voice") => void;
+  openCapture: () => void;
   closeCapture: () => void;
   submitCapture: () => void;
-  voiceText: string;
-  seconds: number;
-  stopVoice: () => void;
+  deleteNote: (id: string) => void;
   toast: string | null;
   showToast: (msg: string) => void;
   signOut: () => Promise<void>;
@@ -205,15 +201,11 @@ export function AppStateProvider({
   const [libFilter, setLibFilter] = useState<LibraryFilter>("All");
   const [query, setQuery] = useState("");
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const [capture, setCapture] = useState<"text" | "voice" | null>(null);
+  const [capture, setCapture] = useState<"text" | null>(null);
   const [draft, setDraft] = useState("");
-  const [voiceText, setVoiceText] = useState("");
-  const [seconds, setSeconds] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const voiceTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const transcriptIndex = useRef(0);
 
   // ---- data loading -------------------------------------------------------
 
@@ -344,28 +336,13 @@ export function AppStateProvider({
     }
   }, []);
 
-  const openCapture = useCallback((kind: "text" | "voice") => {
-    setCapture(kind);
-    if (kind === "voice") {
-      setSeconds(0);
-      setVoiceText("");
-      transcriptIndex.current = 0;
-      const words = DEMO_TRANSCRIPT.split(" ");
-      voiceTimer.current = setInterval(() => {
-        setSeconds((s) => s + 1);
-        transcriptIndex.current = Math.min(transcriptIndex.current + 2, words.length);
-        setVoiceText(words.slice(0, transcriptIndex.current).join(" "));
-      }, 1000);
-    }
+  const openCapture = useCallback(() => {
+    setCapture("text");
   }, []);
 
   const closeCapture = useCallback(() => {
     setCapture(null);
     setDraft("");
-    if (voiceTimer.current) {
-      clearInterval(voiceTimer.current);
-      voiceTimer.current = null;
-    }
   }, []);
 
   const submitCapture = useCallback(() => {
@@ -399,28 +376,10 @@ export function AppStateProvider({
     closeCapture();
   }, [draft, userId, closeCapture, showToast]);
 
-  const stopVoice = useCallback(() => {
-    if (voiceTimer.current) {
-      clearInterval(voiceTimer.current);
-      voiceTimer.current = null;
-    }
-    const finalText = voiceText || DEMO_TRANSCRIPT;
-    const id = `n${Date.now()}`;
-    const newNote: LibraryNote = {
-      id, category: "Journal", label: "JOURNAL", sub: "VIA VOICE",
-      date: todayStr(), body: finalText, tags: ["JOURNAL", "PERSONAL", "VOICE"],
-    };
-    setNotes((prev) => [newNote, ...prev]);
-    void supabase.from("library_notes").insert({
-      id, path: `capture/${id}`, title: finalText.slice(0, 80),
-      content: finalText, category: "Journal",
-      tags: ["JOURNAL", "PERSONAL", "VOICE"], manual_tags: [], user_id: userId,
-    });
-    setCapture(null);
-    setVoiceText("");
-    setSeconds(0);
-    showToast("Saved to Journal");
-  }, [voiceText, userId, showToast]);
+  const deleteNote = useCallback((id: string) => {
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+    void supabase.from("library_notes").delete().eq("id", id);
+  }, []);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -429,7 +388,6 @@ export function AppStateProvider({
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      if (voiceTimer.current) clearInterval(voiceTimer.current);
     };
   }, []);
 
@@ -444,7 +402,7 @@ export function AppStateProvider({
       query, setQuery,
       selectedNoteId, openNote, updateNote,
       capture, draft, setDraft, openCapture, closeCapture, submitCapture,
-      voiceText, seconds, stopVoice,
+      deleteNote,
       toast, showToast,
       signOut,
     }),
@@ -455,7 +413,7 @@ export function AppStateProvider({
       libFilter, query,
       selectedNoteId, openNote, updateNote,
       capture, draft, openCapture, closeCapture, submitCapture,
-      voiceText, seconds, stopVoice,
+      deleteNote,
       toast, showToast,
       signOut,
     ],

@@ -1,11 +1,11 @@
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { colors, fonts, radius } from "../theme";
 import { useAppState } from "../state/AppState";
 import PageHeader from "../components/PageHeader";
 import NoteEditor from "../components/NoteEditor";
-import type { LibraryFilter } from "../types";
+import type { LibraryFilter, LibraryNote } from "../types";
 
 const FILTERS: LibraryFilter[] = ["All", "Notes", "Quotes", "Journal", "Books", "Inventory", "People"];
 
@@ -17,8 +17,27 @@ function Chevron() {
   );
 }
 
+function TrashIcon() {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke={colors.textTertiary} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 export default function LibraryScreen() {
-  const { notes, people, libFilter, setLibFilter, openNote } = useAppState();
+  const { notes, people, libFilter, setLibFilter, openNote, deleteNote } = useAppState();
+
+  function confirmDelete(note: LibraryNote) {
+    Alert.alert(
+      "Delete entry",
+      `Delete "${note.label}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => deleteNote(note.id) },
+      ],
+    );
+  }
 
   const filteredNotes =
     libFilter === "All" || libFilter === "People" ? notes : notes.filter((n) => n.category === libFilter);
@@ -81,6 +100,13 @@ export default function LibraryScreen() {
               </View>
               <View style={styles.noteHeaderRight}>
                 <Text style={styles.noteDate}>{n.date}</Text>
+                <Pressable
+                  onPress={(e) => { e.stopPropagation(); confirmDelete(n); }}
+                  hitSlop={8}
+                  style={styles.deleteBtn}
+                >
+                  <TrashIcon />
+                </Pressable>
                 <Text style={styles.noteChevron}>›</Text>
               </View>
             </View>
@@ -194,7 +220,10 @@ const styles = StyleSheet.create({
   noteHeaderRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
+  },
+  deleteBtn: {
+    padding: 2,
   },
   noteDate: {
     fontFamily: fonts.mono,
