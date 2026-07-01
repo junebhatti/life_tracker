@@ -74,6 +74,35 @@ alter table public.library_notes add column if not exists manual_title text;
 alter table public.library_notes add column if not exists manual_content text;
 alter table public.library_notes add column if not exists archived_at timestamptz;
 
+-- Places visited worldwide for the Map feature.
+create table if not exists public.map_places (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  name text not null,
+  city text not null,
+  neighborhood text,
+  lat double precision not null,
+  lng double precision not null,
+  notes text not null default '',
+  images jsonb not null default '[]',
+  boundary_geojson jsonb,
+  visited_at date,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists map_places_user_id_idx on public.map_places (user_id);
+create index if not exists map_places_city_idx on public.map_places (user_id, city);
+
+alter table public.map_places enable row level security;
+drop policy if exists "map_places_select_own" on public.map_places;
+drop policy if exists "map_places_insert_own" on public.map_places;
+drop policy if exists "map_places_update_own" on public.map_places;
+drop policy if exists "map_places_delete_own" on public.map_places;
+create policy "map_places_select_own" on public.map_places for select using (auth.uid() = user_id);
+create policy "map_places_insert_own" on public.map_places for insert with check (auth.uid() = user_id);
+create policy "map_places_update_own" on public.map_places for update using (auth.uid() = user_id);
+create policy "map_places_delete_own" on public.map_places for delete using (auth.uid() = user_id);
+
 -- Manually logged income/expense entries for the Budget tracker.
 create table if not exists public.budget_transactions (
   id text primary key,
