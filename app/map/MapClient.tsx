@@ -2,11 +2,10 @@
 
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import { useEffect, useRef } from "react";
+import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from "react-leaflet";
+import { useEffect } from "react";
 import type { MapPlace } from "@/app/api/map/places/route";
 
-// Fix Leaflet's default icon path issue with webpack/Next.js
 const pinIcon = L.divIcon({
   className: "",
   html: `<div style="width:12px;height:12px;background:#1a1a18;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>`,
@@ -20,6 +19,14 @@ const pinIconActive = L.divIcon({
   iconSize: [16, 16],
   iconAnchor: [8, 8],
 });
+
+const boundaryStyle: L.PathOptions = {
+  color: "#c2410c",
+  weight: 2,
+  opacity: 0.8,
+  fillColor: "#c2410c",
+  fillOpacity: 0.08,
+};
 
 function FlyTo({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap();
@@ -38,14 +45,11 @@ export default function MapCanvas({
   selected: MapPlace | null;
   onSelect: (p: MapPlace) => void;
 }) {
-  const mapRef = useRef<L.Map | null>(null);
-
   return (
     <MapContainer
       center={[20, 0]}
       zoom={2}
       style={{ height: "100%", width: "100%" }}
-      ref={mapRef}
     >
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
@@ -53,7 +57,18 @@ export default function MapCanvas({
         subdomains="abcd"
         maxZoom={20}
       />
+
       {selected && <FlyTo lat={selected.lat} lng={selected.lng} />}
+
+      {/* boundary polygon when selected place has one (e.g. a neighbourhood) */}
+      {selected?.boundaryGeoJson && (
+        <GeoJSON
+          key={`boundary-${selected.id}`}
+          data={selected.boundaryGeoJson as GeoJSON.GeoJsonObject}
+          style={() => boundaryStyle}
+        />
+      )}
+
       {places.map((p) => (
         <Marker
           key={p.id}

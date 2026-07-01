@@ -28,6 +28,7 @@ export async function PATCH(
   if (body.notes !== undefined) patch.notes = body.notes;
   if (body.images !== undefined) patch.images = body.images;
   if (body.visitedAt !== undefined) patch.visited_at = body.visitedAt;
+  if (body.boundaryGeoJson !== undefined) patch.boundary_geojson = body.boundaryGeoJson;
 
   const { error } = await supabaseAdmin()
     .from("map_places")

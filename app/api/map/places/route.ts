@@ -11,6 +11,7 @@ export type MapPlace = {
   lng: number;
   notes: string;
   images: string[];
+  boundaryGeoJson?: unknown;
   visitedAt?: string;
   createdAt: string;
 };
@@ -49,6 +50,7 @@ export async function GET(req: NextRequest) {
     lng: r.lng,
     notes: r.notes,
     images: Array.isArray(r.images) ? r.images : [],
+    boundaryGeoJson: r.boundary_geojson ?? undefined,
     visitedAt: r.visited_at ?? undefined,
     createdAt: r.created_at,
   }));
@@ -80,6 +82,7 @@ export async function POST(req: NextRequest) {
       lng: body.lng,
       notes: body.notes ?? "",
       images: body.images ?? [],
+      boundary_geojson: body.boundaryGeoJson ?? null,
       visited_at: body.visitedAt ?? null,
     });
 
