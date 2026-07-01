@@ -12,6 +12,8 @@ import {
 import { supabase } from "../lib/supabase";
 import { colors, fonts } from "../theme";
 
+const SUPABASE_URL = (process.env as Record<string, string | undefined>)["EXPO_PUBLIC_SUPABASE_URL"] ?? "";
+
 type Step = "email" | "otp";
 
 export default function LoginScreen() {
@@ -117,6 +119,7 @@ export default function LoginScreen() {
         )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Text style={styles.debug}>{SUPABASE_URL ? `✓ ${SUPABASE_URL.slice(8, 34)}` : "⚠ SUPABASE_URL not set"}</Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -198,6 +201,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#dc2626",
     marginTop: 12,
+    textAlign: "center",
+  },
+  debug: {
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    color: colors.textFaint,
+    marginTop: 20,
     textAlign: "center",
   },
 });
