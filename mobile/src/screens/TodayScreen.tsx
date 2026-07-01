@@ -16,10 +16,12 @@ function timezoneLabel(): string {
 }
 
 export default function TodayScreen() {
-  const { tasks, agenda } = useAppState();
+  const { tasks, agenda, routines, toggleRoutine } = useAppState();
   const starred = tasks.filter((t) => t.starred && !t.done).slice(0, 3);
   const openTasks = tasks.filter((t) => !t.done);
   const openSpots = Math.max(0, 3 - starred.length);
+
+  const todayAgenda = agenda.filter((e) => e.day === "Today" || e.day === "Tomorrow");
 
   return (
     <View>
@@ -34,26 +36,27 @@ export default function TodayScreen() {
           <Text style={styles.openSpotText}>(open spot)</Text>
         </View>
       ))}
-      <Text style={styles.hint}>Star a task below to set it as today's top 3.</Text>
+      <Text style={styles.hint}>Star a task below to set it as today&apos;s top 3.</Text>
 
-      <View style={styles.upNextHeader}>
-        <Text style={styles.sectionLabelNoMargin}>Up Next</Text>
-        <Pressable>
-          <Text style={styles.viewAll}>View all →</Text>
-        </Pressable>
-      </View>
-      {agenda.map((e) => (
-        <View key={e.id} style={styles.eventRow}>
-          <View style={styles.eventTimeCol}>
-            {e.day ? <Text style={styles.eventMeta}>{e.day}</Text> : null}
-            <Text style={styles.eventMeta}>{e.time}</Text>
+      {todayAgenda.length > 0 ? (
+        <>
+          <View style={styles.upNextHeader}>
+            <Text style={styles.sectionLabelNoMargin}>Up Next</Text>
           </View>
-          <View style={styles.eventBody}>
-            <Text style={styles.eventTitle}>{e.title}</Text>
-            {e.location ? <Text style={styles.eventLocation}>{e.location}</Text> : null}
-          </View>
-        </View>
-      ))}
+          {todayAgenda.map((e) => (
+            <View key={e.id} style={styles.eventRow}>
+              <View style={styles.eventTimeCol}>
+                {e.day ? <Text style={styles.eventMeta}>{e.day}</Text> : null}
+                <Text style={styles.eventMeta}>{e.time}</Text>
+              </View>
+              <View style={styles.eventBody}>
+                <Text style={styles.eventTitle}>{e.title}</Text>
+                {e.location ? <Text style={styles.eventLocation}>{e.location}</Text> : null}
+              </View>
+            </View>
+          ))}
+        </>
+      ) : null}
 
       <HealthWidget />
 
@@ -61,6 +64,31 @@ export default function TodayScreen() {
       {openTasks.map((t) => (
         <TaskRow key={t.id} task={t} />
       ))}
+
+      {routines.length > 0 ? (
+        <>
+          <Text style={styles.sectionLabel}>Routines</Text>
+          {routines.map((r) => (
+            <Pressable key={r.id} style={styles.routineRow} onPress={() => toggleRoutine(r.id)}>
+              <View style={[styles.routineCheck, r.doneToday && styles.routineCheckDone]}>
+                {r.doneToday ? <Text style={styles.routineCheckMark}>✓</Text> : null}
+              </View>
+              <View style={styles.routineBody}>
+                <Text style={[styles.routineTitle, r.doneToday && styles.routineDone]}>
+                  {r.title}
+                </Text>
+                {r.description ? (
+                  <Text style={styles.routineMeta}>{r.description}</Text>
+                ) : null}
+              </View>
+              <View style={styles.routineStreak}>
+                <Text style={styles.routineStreakNum}>{r.streak}</Text>
+                <Text style={styles.routineStreakLabel}>streak</Text>
+              </View>
+            </Pressable>
+          ))}
+        </>
+      ) : null}
     </View>
   );
 }
@@ -106,11 +134,6 @@ const styles = StyleSheet.create({
     marginTop: 30,
     marginBottom: 6,
   },
-  viewAll: {
-    fontFamily: fonts.mono,
-    fontSize: 10.5,
-    color: colors.textTertiary,
-  },
   eventRow: {
     flexDirection: "row",
     gap: 14,
@@ -118,17 +141,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  eventTimeCol: {
-    width: 62,
-  },
+  eventTimeCol: { width: 62 },
   eventMeta: {
     fontFamily: fonts.mono,
     fontSize: 10.5,
     color: colors.textTertiary,
   },
-  eventBody: {
-    flex: 1,
-  },
+  eventBody: { flex: 1 },
   eventTitle: {
     fontFamily: fonts.sans,
     fontSize: 15,
@@ -138,7 +157,62 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: 10.5,
     color: colors.textTertiary,
-    textTransform: "none",
     marginTop: 2,
+  },
+  routineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  routineCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: colors.chevron,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  routineCheckDone: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  routineCheckMark: {
+    color: "#fff",
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  routineBody: { flex: 1 },
+  routineTitle: {
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    color: colors.textPrimary,
+  },
+  routineDone: {
+    color: colors.textTertiary,
+    textDecorationLine: "line-through",
+  },
+  routineMeta: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    color: colors.textTertiary,
+    marginTop: 2,
+  },
+  routineStreak: {
+    alignItems: "center",
+  },
+  routineStreakNum: {
+    fontFamily: fonts.serif,
+    fontSize: 18,
+    color: colors.textPrimary,
+  },
+  routineStreakLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 8.5,
+    color: colors.textFaint,
+    textTransform: "uppercase",
   },
 });

@@ -21,12 +21,19 @@ export type AgendaEvent = {
 
 export type ProjectGroup = "Active" | "Retainers" | "Areas";
 
+export type Milestone = { id: string; text: string; done: boolean };
+export type ChecklistItem = { id: string; text: string; done: boolean };
+
 export type Project = {
   id: string;
   name: string;
   color: string;
   group: ProjectGroup;
   meta: string;
+  client?: string;
+  target?: string;
+  milestones: Milestone[];
+  checklist: ChecklistItem[];
 };
 
 export type Person = {
@@ -66,3 +73,29 @@ export type ScrapItem = ScrapImageItem | ScrapQuoteItem | ScrapNoteItem;
 export type LibraryFilter = "All" | LibraryCategory | "People";
 
 export type CaptureKind = "task" | "quote" | "journal" | "note";
+
+export type Routine = {
+  id: string;
+  title: string;
+  description?: string;
+  period: string;
+  streakGoal?: number;
+  doneToday: boolean;
+  streak: number;
+};
+
+export type HealthData = {
+  sleepHours?: number;
+  sleepStart?: string;
+  sleepEnd?: string;
+  deepMinutes?: number;
+  lightMinutes?: number;
+  remMinutes?: number;
+  awakeMinutes?: number;
+  restingHR?: number;
+  steps?: number;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+};

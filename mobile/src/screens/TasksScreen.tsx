@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import PageHeader from "../components/PageHeader";
@@ -35,7 +35,10 @@ function groupTasks(tasks: Task[]) {
 
 export default function TasksScreen() {
   const { tasks } = useAppState();
+  const [showDone, setShowDone] = useState(false);
+
   const openTasks = tasks.filter((t) => !t.done);
+  const doneTasks = tasks.filter((t) => t.done);
   const groups = useMemo(() => groupTasks(openTasks), [openTasks]);
 
   return (
@@ -43,23 +46,79 @@ export default function TasksScreen() {
       <PageHeader
         label="All Tasks"
         title="Tasks"
-        sub={`${openTasks.length} open · ${tasks.length} total`}
+        sub={`${openTasks.length} open · ${doneTasks.length} done`}
       />
-      {groups.map((g) => (
-        <View key={g.label}>
+
+      <View style={styles.toggleRow}>
+        <Pressable
+          style={[styles.toggleBtn, !showDone && styles.toggleBtnActive]}
+          onPress={() => setShowDone(false)}
+        >
+          <Text style={[styles.toggleLabel, !showDone && styles.toggleLabelActive]}>Open</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.toggleBtn, showDone && styles.toggleBtnActive]}
+          onPress={() => setShowDone(true)}
+        >
+          <Text style={[styles.toggleLabel, showDone && styles.toggleLabelActive]}>Done</Text>
+        </Pressable>
+      </View>
+
+      {showDone ? (
+        <View>
           <View style={styles.groupHeader}>
-            <Text style={styles.groupLabel}>{`${g.label} · ${g.tasks.length}`}</Text>
+            <Text style={styles.groupLabel}>{`Completed · ${doneTasks.length}`}</Text>
           </View>
-          {g.tasks.map((t) => (
+          {doneTasks.map((t) => (
             <TaskRow key={t.id} task={t} />
           ))}
+          {doneTasks.length === 0 ? (
+            <Text style={styles.empty}>No completed tasks yet.</Text>
+          ) : null}
         </View>
-      ))}
+      ) : (
+        groups.map((g) => (
+          <View key={g.label}>
+            <View style={styles.groupHeader}>
+              <Text style={styles.groupLabel}>{`${g.label} · ${g.tasks.length}`}</Text>
+            </View>
+            {g.tasks.map((t) => (
+              <TaskRow key={t.id} task={t} />
+            ))}
+          </View>
+        ))
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  toggleRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  toggleBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  toggleBtnActive: {
+    backgroundColor: colors.surfaceDark,
+    borderColor: colors.surfaceDark,
+  },
+  toggleLabel: {
+    fontFamily: fonts.monoMedium,
+    fontSize: 10.5,
+    textTransform: "uppercase",
+    color: colors.textSecondary,
+  },
+  toggleLabelActive: {
+    color: colors.background,
+  },
   groupHeader: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -72,5 +131,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: "uppercase",
     color: colors.textSecondary,
+  },
+  empty: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    color: colors.textTertiary,
+    fontStyle: "italic",
+    marginTop: 20,
+    textAlign: "center",
   },
 });
