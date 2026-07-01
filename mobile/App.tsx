@@ -98,14 +98,12 @@ export default function App() {
     JetBrainsMono_700Bold,
   });
 
-  const fontsLoaded = newsreaderLoaded && geistLoaded && geistMonoLoaded && jetbrainsLoaded;
-
-  if (!fontsLoaded) {
-    return <View style={styles.app} />;
-  }
+  // Don't block render on font loading — on web fonts may load async and the
+  // gate would produce a permanent blank screen if any family is slow/missing.
+  void (newsreaderLoaded && geistLoaded && geistMonoLoaded && jetbrainsLoaded);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, minHeight: "100%" }}>
       <SafeAreaProvider>
         <AppStateProvider>
           <AppShell />
