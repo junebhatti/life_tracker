@@ -89,15 +89,13 @@ export default function App() {
       setSession(data.session);
       setAuthReady(true);
     }).catch(() => {
-      setAuthReady(true); // show login screen even if Supabase isn't configured
+      setAuthReady(true);
     });
-    // Fallback: if getSession hangs (e.g. bad URL), show login after 3s
-    const timeout = setTimeout(() => setAuthReady(true), 3000);
-    const { data: listener } = supabase.auth.onAuthStateChange((_, s) => setSession(s));
-    return () => {
-      clearTimeout(timeout);
-      listener.subscription.unsubscribe();
-    };
+    const { data: listener } = supabase.auth.onAuthStateChange((_, s) => {
+      setSession(s);
+      setAuthReady(true);
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   // Load fonts in parallel — don't block rendering on them
