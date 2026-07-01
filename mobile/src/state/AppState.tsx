@@ -1,5 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { seedAgenda, seedNotes, seedPeople, seedProjects, seedScrapItems, seedTasks } from "../data/seed";
+
+// Set EXPO_PUBLIC_API_URL (e.g. "https://your-app.vercel.app") and
+// EXPO_PUBLIC_SCRAPBOOK_KEY (matching SCRAPBOOK_API_KEY on the server) in
+// your Expo environment to sync the scrapbook between mobile and web.
+const API_URL = (process.env as Record<string, string | undefined>)["EXPO_PUBLIC_API_URL"] ?? "";
+const SCRAP_KEY = (process.env as Record<string, string | undefined>)["EXPO_PUBLIC_SCRAPBOOK_KEY"] ?? "";
+function scrapHeaders(): Record<string, string> {
+  return SCRAP_KEY ? { "x-scrapbook-key": SCRAP_KEY } : {};
+}
+
 import type {
   AgendaEvent,
   CaptureKind,
@@ -73,6 +83,7 @@ function today(): string {
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(seedTasks);
   const [notes, setNotes] = useState<LibraryNote[]>(seedNotes);
+  const [scrapItems, setScrapItems] = useState<ScrapItem[]>(seedScrapItems);
   const [healthExpanded, setHealthExpanded] = useState(false);
   const [libFilter, setLibFilter] = useState<LibraryFilter>("All");
   const [query, setQuery] = useState("");
@@ -193,6 +204,19 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Sync scrapbook from the website API when configured.
+  useEffect(() => {
+    if (!API_URL) return;
+    fetch(`${API_URL}/api/scrapbook`, { headers: scrapHeaders() })
+      .then((r) => r.json())
+      .then((d: { items?: ScrapItem[] }) => {
+        if (d.items && d.items.length > 0) setScrapItems(d.items);
+      })
+      .catch(() => {
+        // Network unavailable — keep seed / previously loaded items.
+      });
+  }, []);
+
   const value = useMemo<AppStateValue>(
     () => ({
       tasks,
@@ -200,7 +224,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       projects: seedProjects,
       people: seedPeople,
       agenda: seedAgenda,
-      scrapItems: seedScrapItems,
+      scrapItems,
       toggleTaskDone,
       toggleTaskStar,
       healthExpanded,
@@ -227,6 +251,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [
       tasks,
       notes,
+      scrapItems,
       toggleTaskDone,
       toggleTaskStar,
       healthExpanded,

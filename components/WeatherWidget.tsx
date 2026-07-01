@@ -85,19 +85,8 @@ export default function WeatherWidget() {
         });
     }
 
-    if (typeof navigator !== "undefined" && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          loadFromCoords(pos.coords.latitude, pos.coords.longitude).catch(() => {
-            if (!cancelled) setError("Couldn't load weather.");
-          });
-        },
-        () => loadFromIP(),
-        { timeout: 8000, maximumAge: 600_000 },
-      );
-    } else {
-      loadFromIP();
-    }
+    // Use IP-based location only — avoids the repeated browser permission prompt.
+    loadFromIP();
 
     return () => {
       cancelled = true;

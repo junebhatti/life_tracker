@@ -15,7 +15,11 @@ async function recordDailyMetrics(
   snapshot: Awaited<ReturnType<typeof fetchHealthSnapshot>>,
 ) {
   if (!supabaseAdminConfigured()) return;
-  const userId = await userIdFromRequest(request);
+  // Prefer the authenticated caller's user ID; fall back to a configured owner
+  // ID so history still accumulates even when the widget loads before the
+  // Supabase session resolves (or on deployments where auth cookies cleared).
+  let userId = await userIdFromRequest(request);
+  if (!userId) userId = process.env.OWNER_USER_ID ?? null;
   if (!userId) return;
 
   const date = civilDateKey(timezone || "UTC");
