@@ -72,6 +72,7 @@ alter table public.library_notes add column if not exists manual_tags jsonb not 
 alter table public.library_notes add column if not exists category text;
 alter table public.library_notes add column if not exists manual_title text;
 alter table public.library_notes add column if not exists manual_content text;
+alter table public.library_notes add column if not exists archived_at timestamptz;
 
 -- Manually logged income/expense entries for the Budget tracker.
 create table if not exists public.budget_transactions (

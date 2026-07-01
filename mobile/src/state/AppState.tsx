@@ -241,6 +241,7 @@ export function AppStateProvider({
       .from("library_notes")
       .select("id,title,content,category,manual_title,manual_content,tags,manual_tags,created_at")
       .eq("user_id", userId)
+      .is("archived_at", null)
       .order("created_at", { ascending: false });
     if (data) setNotes((data as NoteRow[]).map(mapNote));
   }
@@ -378,7 +379,10 @@ export function AppStateProvider({
 
   const deleteNote = useCallback((id: string) => {
     setNotes((prev) => prev.filter((n) => n.id !== id));
-    void supabase.from("library_notes").delete().eq("id", id);
+    void supabase
+      .from("library_notes")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", id);
   }, []);
 
   const signOut = useCallback(async () => {
