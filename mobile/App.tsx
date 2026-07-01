@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import type { Session } from "@supabase/supabase-js";
 
 import {
   useFonts as useNewsreaderFonts,
@@ -28,6 +29,7 @@ import {
   JetBrainsMono_700Bold,
 } from "@expo-google-fonts/jetbrains-mono";
 
+import { supabase } from "./src/lib/supabase";
 import { colors } from "./src/theme";
 import { AppStateProvider, useAppState } from "./src/state/AppState";
 import BottomNav, { TabKey } from "./src/components/BottomNav";
@@ -35,6 +37,7 @@ import NotificationBell from "./src/components/NotificationBell";
 import Fabs from "./src/components/Fabs";
 import Toast from "./src/components/Toast";
 import QuickCaptureModal from "./src/components/QuickCaptureModal";
+import LoginScreen from "./src/screens/LoginScreen";
 import TodayScreen from "./src/screens/TodayScreen";
 import TasksScreen from "./src/screens/TasksScreen";
 import ProjectsScreen from "./src/screens/ProjectsScreen";
@@ -78,34 +81,36 @@ function AppShell() {
 }
 
 export default function App() {
-  const [newsreaderLoaded] = useNewsreaderFonts({
-    Newsreader_400Regular,
-    Newsreader_500Medium,
-  });
-  const [geistLoaded] = useGeistFonts({
-    Geist_400Regular,
-    Geist_500Medium,
-    Geist_600SemiBold,
-  });
-  const [geistMonoLoaded] = useGeistMonoFonts({
-    GeistMono_400Regular,
-    GeistMono_500Medium,
-    GeistMono_600SemiBold,
-    GeistMono_700Bold,
-  });
-  const [jetbrainsLoaded] = useJetBrainsMonoFonts({
-    JetBrainsMono_400Regular,
-    JetBrainsMono_700Bold,
-  });
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
 
-  // Don't block render on font loading — on web fonts may load async and the
-  // gate would produce a permanent blank screen if any family is slow/missing.
-  void (newsreaderLoaded && geistLoaded && geistMonoLoaded && jetbrainsLoaded);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_, s) => setSession(s));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Load fonts in parallel — don't block rendering on them
+  useNewsreaderFonts({ Newsreader_400Regular, Newsreader_500Medium });
+  useGeistFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold });
+  useGeistMonoFonts({ GeistMono_400Regular, GeistMono_500Medium, GeistMono_600SemiBold, GeistMono_700Bold });
+  useJetBrainsMonoFonts({ JetBrainsMono_400Regular, JetBrainsMono_700Bold });
+
+  if (!authReady) {
+    return <View style={styles.app} />;
+  }
+
+  if (!session) {
+    return <LoginScreen />;
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1, minHeight: "100%" }}>
       <SafeAreaProvider>
-        <AppStateProvider>
+        <AppStateProvider userId={session.user.id}>
           <AppShell />
           <StatusBar style="dark" />
         </AppStateProvider>
