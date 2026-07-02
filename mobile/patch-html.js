@@ -19,3 +19,12 @@ html = html.replace(
 
 fs.writeFileSync(file, html);
 console.log("Patched dist/index.html with iOS PWA meta tags");
+
+// Write the current build id so the running app can detect when a newer
+// deployment exists and auto-reload into it (served no-store; see next.config).
+const buildId = process.env.EXPO_PUBLIC_BUILD_ID || "dev";
+fs.writeFileSync(
+  path.join(__dirname, "dist", "version.json"),
+  JSON.stringify({ buildId }),
+);
+console.log(`Wrote dist/version.json (buildId: ${buildId})`);

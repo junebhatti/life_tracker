@@ -1,6 +1,41 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { AppState as RNAppState } from "react-native";
+import { AppState as RNAppState, Platform } from "react-native";
 import { supabase } from "../lib/supabase";
+
+// The build this running bundle was compiled from (Vercel commit SHA, stamped
+// in at build time). Used to auto-detect and reload into a newer deployment.
+const LOCAL_BUILD_ID = process.env.EXPO_PUBLIC_BUILD_ID;
+
+/**
+ * Fetch the deployed build id (no-store) and, if it's newer than the one this
+ * bundle was built from, purge caches and hard-reload into it. This makes the
+ * installed PWA self-update on open/foreground without any button press. A
+ * sessionStorage guard prevents reload loops.
+ */
+async function checkForUpdate() {
+  if (Platform.OS !== "web" || typeof window === "undefined") return;
+  if (!LOCAL_BUILD_ID || LOCAL_BUILD_ID === "local" || LOCAL_BUILD_ID === "dev") return;
+  try {
+    const res = await fetch(`/app/version.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = (await res.json()) as { buildId?: string };
+    if (!data.buildId || data.buildId === LOCAL_BUILD_ID) return;
+    if (window.sessionStorage?.getItem("lt_pending_build") === data.buildId) return;
+    window.sessionStorage?.setItem("lt_pending_build", data.buildId);
+    try {
+      if (typeof caches !== "undefined") {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch {
+      // ignore — the cache-busting navigation below is the real fix
+    }
+    const base = window.location.pathname.replace(/[?#].*$/, "");
+    window.location.replace(`${base}?u=${Date.now()}`);
+  } catch {
+    // offline or version.json missing — nothing to do
+  }
+}
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "";
 const SCRAP_KEY = process.env.EXPO_PUBLIC_SCRAPBOOK_KEY ?? "";
@@ -405,8 +440,10 @@ export function AppStateProvider({
   // from the home screen), silently re-pull the live data — health/steps and
   // calendar would otherwise stay frozen at whatever they were when it opened.
   useEffect(() => {
+    void checkForUpdate();
     const sub = RNAppState.addEventListener("change", (state) => {
       if (state === "active") {
+        void checkForUpdate();
         void loadHealth();
         void loadAgenda();
         void loadTasks();

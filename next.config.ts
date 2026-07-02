@@ -25,6 +25,10 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
       },
       {
+        source: "/app/version.json",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
         source: "/app/_expo/:path*",
         headers: [
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
