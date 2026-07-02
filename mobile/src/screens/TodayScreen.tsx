@@ -5,6 +5,7 @@ import { useAppState } from "../state/AppState";
 import PageHeader from "../components/PageHeader";
 import TaskRow from "../components/TaskRow";
 import HealthWidget from "../components/HealthWidget";
+import TodaySettings from "../components/TodaySettings";
 
 function todayTitle(): string {
   return new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -89,6 +90,8 @@ export default function TodayScreen() {
           ))}
         </>
       ) : null}
+
+      <TodaySettings />
     </View>
   );
 }

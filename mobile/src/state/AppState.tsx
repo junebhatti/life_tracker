@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AppState as RNAppState } from "react-native";
 import { supabase } from "../lib/supabase";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "";
@@ -170,6 +171,8 @@ type AppStateValue = {
   routines: Routine[];
   health: HealthData | null;
   loading: boolean;
+  refreshing: boolean;
+  refreshAll: () => Promise<void>;
   toggleTaskDone: (id: string) => void;
   toggleTaskStar: (id: string) => void;
   toggleRoutine: (id: string) => void;
@@ -230,6 +233,7 @@ export function AppStateProvider({
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [healthExpanded, setHealthExpanded] = useState(false);
   const [libFilter, setLibFilter] = useState<LibraryFilter>("All");
@@ -376,6 +380,39 @@ export function AppStateProvider({
     }
   }
 
+  // Re-pull everything without clearing the screen (used by the manual Sync
+  // button and by the foreground refetch below).
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.allSettled([
+      loadTasks(),
+      loadNotes(),
+      loadProjects(),
+      loadPeople(),
+      loadAgenda(),
+      loadScrapbook(),
+      loadRoutines(),
+      loadHealth(),
+    ]);
+    setRefreshing(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // When the app returns to the foreground (e.g. reopening the installed PWA
+  // from the home screen), silently re-pull the live data — health/steps and
+  // calendar would otherwise stay frozen at whatever they were when it opened.
+  useEffect(() => {
+    const sub = RNAppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void loadHealth();
+        void loadAgenda();
+        void loadTasks();
+      }
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   // ---- mutations ----------------------------------------------------------
 
   const showToast = useCallback((msg: string) => {
@@ -502,6 +539,7 @@ export function AppStateProvider({
   const value = useMemo<AppStateValue>(
     () => ({
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
+      refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, toggleRoutine,
       healthExpanded, toggleHealthExpanded,
       categories,
@@ -516,6 +554,7 @@ export function AppStateProvider({
     }),
     [
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
+      refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, toggleRoutine,
       healthExpanded, toggleHealthExpanded,
       categories,
