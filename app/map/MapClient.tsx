@@ -2,7 +2,7 @@
 
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from "react-leaflet";
+import { Circle, GeoJSON, MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import type { GeoJsonObject } from "geojson";
 import { useEffect } from "react";
 import type { MapPlace } from "@/app/api/map/places/route";
@@ -21,7 +21,7 @@ const pinIconActive = L.divIcon({
   iconAnchor: [8, 8],
 });
 
-const boundaryStyle: L.PathOptions = {
+const areaStyle: L.PathOptions = {
   color: "#c2410c",
   weight: 2,
   opacity: 0.8,
@@ -29,10 +29,18 @@ const boundaryStyle: L.PathOptions = {
   fillOpacity: 0.08,
 };
 
+const circleStyle: L.PathOptions = {
+  color: "#c2410c",
+  weight: 1.5,
+  opacity: 0.7,
+  fillColor: "#c2410c",
+  fillOpacity: 0.06,
+};
+
 function FlyTo({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo([lat, lng], 13, { animate: true, duration: 0.8 });
+    map.flyTo([lat, lng], 15, { animate: true, duration: 0.8 });
   }, [map, lat, lng]);
   return null;
 }
@@ -61,12 +69,22 @@ export default function MapCanvas({
 
       {selected && <FlyTo lat={selected.lat} lng={selected.lng} />}
 
-      {/* boundary polygon when selected place has one (e.g. a neighbourhood) */}
+      {/* polygon boundary for areas (neighbourhoods, parks, etc.) */}
       {!!selected?.boundaryGeoJson && (
         <GeoJSON
           key={`boundary-${selected.id}`}
           data={selected.boundaryGeoJson as GeoJsonObject}
-          style={() => boundaryStyle}
+          style={() => areaStyle}
+        />
+      )}
+
+      {/* radius circle for point places (restaurants, shops, etc.) */}
+      {selected && !selected.boundaryGeoJson && (
+        <Circle
+          key={`circle-${selected.id}`}
+          center={[selected.lat, selected.lng]}
+          radius={120}
+          pathOptions={circleStyle}
         />
       )}
 
@@ -79,6 +97,9 @@ export default function MapCanvas({
         >
           <Popup>
             <strong>{p.name}</strong>
+            {p.officialName && p.officialName !== p.name && (
+              <><br /><span style={{ color: "#888", fontSize: "11px" }}>{p.officialName}</span></>
+            )}
             {p.neighborhood ? <><br /><span style={{ color: "#666" }}>{p.neighborhood}</span></> : null}
           </Popup>
         </Marker>

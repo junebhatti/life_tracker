@@ -93,8 +93,9 @@ create table if not exists public.map_places (
 create index if not exists map_places_user_id_idx on public.map_places (user_id);
 create index if not exists map_places_city_idx on public.map_places (user_id, city);
 
--- In case map_places was created before the boundary column existed.
+-- In case map_places was created before these columns existed.
 alter table public.map_places add column if not exists boundary_geojson jsonb;
+alter table public.map_places add column if not exists official_name text;
 
 alter table public.map_places enable row level security;
 drop policy if exists "map_places_select_own" on public.map_places;

@@ -23,6 +23,7 @@ export async function PATCH(
 
   const patch: Record<string, unknown> = {};
   if (body.name !== undefined) patch.name = body.name;
+  if (body.officialName !== undefined) patch.official_name = body.officialName;
   if (body.city !== undefined) patch.city = body.city;
   if (body.neighborhood !== undefined) patch.neighborhood = body.neighborhood;
   if (body.notes !== undefined) patch.notes = body.notes;

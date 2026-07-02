@@ -5,6 +5,7 @@ import { userIdFromRequest } from "@/lib/serverAuth";
 export type MapPlace = {
   id: string;
   name: string;
+  officialName?: string;
   city: string;
   neighborhood?: string;
   lat: number;
@@ -44,6 +45,7 @@ export async function GET(req: NextRequest) {
   const places: MapPlace[] = (data ?? []).map((r) => ({
     id: r.id,
     name: r.name,
+    officialName: r.official_name ?? undefined,
     city: r.city,
     neighborhood: r.neighborhood ?? undefined,
     lat: r.lat,
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest) {
       id,
       user_id: userId,
       name: body.name,
+      official_name: body.officialName ?? null,
       city: body.city,
       neighborhood: body.neighborhood ?? null,
       lat: body.lat,

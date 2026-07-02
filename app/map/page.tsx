@@ -272,6 +272,8 @@ function DetailPanel({
   onEdit: () => void;
   onDelete: (id: string) => void;
 }) {
+  const showOfficial = place.officialName && place.officialName !== place.name;
+
   return (
     <div className="absolute right-0 top-0 bottom-0 w-80 bg-white border-l border-border shadow-lg overflow-y-auto z-[1000]">
       <div className="p-5">
@@ -281,6 +283,9 @@ function DetailPanel({
               {place.city}{place.neighborhood ? ` · ${place.neighborhood}` : ""}
             </p>
             <h3 className="mt-0.5 text-lg font-semibold text-foreground leading-tight">{place.name}</h3>
+            {showOfficial && (
+              <p className="mt-0.5 text-[11px] text-muted">{place.officialName}</p>
+            )}
             {place.visitedAt && (
               <p className="mt-1 text-[11px] uppercase tracking-wider text-muted">
                 Visited {new Date(place.visitedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
@@ -328,6 +333,7 @@ function DetailPanel({
 
 type SavePayload = {
   name: string;
+  officialName?: string;
   city: string;
   neighborhood?: string;
   lat: number;
@@ -335,6 +341,15 @@ type SavePayload = {
   notes: string;
   visitedAt?: string;
   boundaryGeoJson?: unknown;
+};
+
+type Picked = {
+  officialName: string;
+  city: string;
+  neighborhood: string;
+  lat: number;
+  lng: number;
+  boundaryGeoJson: unknown | null;
 };
 
 function GeocoderPanel({
@@ -356,17 +371,10 @@ function GeocoderPanel({
   const [showResults, setShowResults] = useState(false);
   const { results, searching } = useGeocode(query, token);
 
-  const [picked, setPicked] = useState<{
-    name: string;
-    city: string;
-    neighborhood: string;
-    lat: number;
-    lng: number;
-    boundaryGeoJson: unknown | null;
-  } | null>(
+  const [picked, setPicked] = useState<Picked | null>(
     initial
       ? {
-          name: initial.name,
+          officialName: initial.officialName ?? initial.name,
           city: initial.city,
           neighborhood: initial.neighborhood ?? "",
           lat: initial.lat,
@@ -376,25 +384,35 @@ function GeocoderPanel({
       : null,
   );
 
-  const [name, setName] = useState(initial?.name ?? "");
+  // custom display name the user can freely edit
+  const [customName, setCustomName] = useState(initial?.name ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [visitedAt, setVisitedAt] = useState(initial?.visitedAt ?? "");
   const [saving, setSaving] = useState(false);
 
   function selectResult(r: GeocodeResult) {
     const city = r.city || defaultCity;
-    setPicked({ name: r.name, city, neighborhood: r.neighborhood, lat: r.lat, lng: r.lng, boundaryGeoJson: r.boundaryGeoJson });
-    setName(r.name);
+    setPicked({
+      officialName: r.name,
+      city,
+      neighborhood: r.neighborhood,
+      lat: r.lat,
+      lng: r.lng,
+      boundaryGeoJson: r.boundaryGeoJson,
+    });
+    setCustomName(r.name);
     setQuery("");
     setShowResults(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!picked || !name) return;
+    if (!picked) return;
+    const displayName = customName.trim() || picked.officialName;
     setSaving(true);
     await onSave({
-      name,
+      name: displayName,
+      officialName: picked.officialName !== displayName ? picked.officialName : undefined,
       city: picked.city,
       neighborhood: picked.neighborhood || undefined,
       lat: picked.lat,
@@ -429,7 +447,7 @@ function GeocoderPanel({
             autoComplete="off"
           />
           {searching && (
-            <p className="mt-1 text-[11px] text-muted">Searching…</p>
+            <p className="mt-1 text-[11px] text-muted">Searching...</p>
           )}
           {showResults && results.length > 0 && (
             <ul className="absolute left-0 right-0 top-full mt-1 bg-white border border-border rounded-md shadow-md z-10 max-h-64 overflow-y-auto">
@@ -454,22 +472,30 @@ function GeocoderPanel({
 
         {picked && (
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            {/* location summary badge */}
             <div className="rounded-md bg-neutral-50 border border-border px-3 py-2 text-[12px] text-foreground leading-snug">
               <span className="font-medium">{picked.city}</span>
               {picked.neighborhood && <> · {picked.neighborhood}</>}
               {!!picked.boundaryGeoJson && (
                 <span className="ml-2 text-orange-600">· boundary</span>
               )}
+              {!picked.boundaryGeoJson && (
+                <span className="ml-2 text-neutral-400">· radius circle</span>
+              )}
             </div>
 
-            <Field label="Label">
+            <Field label="Your name">
               <input
                 className={inputCls}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Custom name…"
-                required
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder={picked.officialName}
               />
+              {picked.officialName !== customName.trim() && customName.trim() && (
+                <p className="mt-0.5 text-[10px] text-muted">
+                  Official: {picked.officialName}
+                </p>
+              )}
             </Field>
 
             <Field label="Notes">
@@ -478,7 +504,7 @@ function GeocoderPanel({
                 rows={4}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Great tacos, cash only…"
+                placeholder="Great tacos, cash only..."
               />
             </Field>
 
@@ -496,7 +522,7 @@ function GeocoderPanel({
               disabled={saving}
               className="mt-1 rounded-md bg-neutral-800 py-2 text-[11px] font-medium uppercase tracking-wider text-white hover:bg-neutral-700 disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Save Pin"}
+              {saving ? "Saving..." : "Save Pin"}
             </button>
           </form>
         )}
