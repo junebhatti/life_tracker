@@ -6,9 +6,15 @@ import { useAppState } from "../state/AppState";
 import { thingsAddUrl } from "../lib/things";
 
 export default function TaskRow({ task }: { task: Task }) {
-  const { toggleTaskDone, toggleTaskStar, showToast } = useAppState();
+  const { toggleTaskDone, toggleTaskStar, showToast, projects } = useAppState();
   const [pendingDone, setPendingDone] = useState(false);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Resolve the tagged project (freshly-captured tasks carry name/color inline;
+  // tasks loaded from the DB only carry projectId, so look it up here).
+  const project = task.projectId ? projects.find((p) => p.id === task.projectId) : undefined;
+  const projectName = task.projectName ?? project?.name;
+  const projectColor = task.projectColor ?? project?.color;
 
   useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
 
@@ -49,12 +55,12 @@ export default function TaskRow({ task }: { task: Task }) {
       </Pressable>
       <View style={styles.body}>
         <Text style={[styles.title, task.done && styles.titleDone]}>{task.title}</Text>
-        {task.projectName ? (
+        {projectName ? (
           <View style={styles.metaRow}>
-            {task.projectColor ? (
-              <View style={[styles.dot, { backgroundColor: task.projectColor }]} />
+            {projectColor ? (
+              <View style={[styles.dot, { backgroundColor: projectColor }]} />
             ) : null}
-            <Text style={styles.metaText}>{task.projectName}</Text>
+            <Text style={styles.metaText}>{projectName}</Text>
             {task.dueLabel ? (
               <Text style={[styles.metaText, task.overdue && styles.metaOverdue]}>
                 {" · " + task.dueLabel}

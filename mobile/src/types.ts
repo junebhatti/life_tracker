@@ -3,6 +3,7 @@ export type Task = {
   title: string;
   done: boolean;
   starred: boolean;
+  projectId?: string;
   projectName?: string;
   projectColor?: string;
   dueDate?: string;

@@ -78,6 +78,7 @@ function mapTask(row: TaskRow): Task {
     title: row.title,
     starred: row.starred,
     done: row.status !== "open",
+    projectId: row.project_id ?? undefined,
     dueDate: row.due ?? undefined,
     dueLabel: row.due ? dueLabel(row.due) : undefined,
     overdue: !!(row.due && row.due < today && row.status === "open"),
@@ -195,7 +196,7 @@ type AppStateValue = {
   setDraft: (s: string) => void;
   openCapture: () => void;
   closeCapture: () => void;
-  submitCapture: (categoryOverride?: string) => void;
+  submitCapture: (intent?: { type?: string; projectId?: string }) => void;
   deleteNote: (id: string) => void;
   toast: string | null;
   showToast: (msg: string) => void;
@@ -409,6 +410,9 @@ export function AppStateProvider({
         void loadHealth();
         void loadAgenda();
         void loadTasks();
+        void loadProjects();
+        void loadNotes();
+        void loadRoutines();
       }
     });
     return () => sub.remove();
@@ -518,21 +522,48 @@ export function AppStateProvider({
     setDraft("");
   }, []);
 
-  const submitCapture = useCallback((categoryOverride?: string) => {
+  const submitCapture = useCallback((intent?: { type?: string; projectId?: string }) => {
     if (!draft.trim()) return;
-    const { kind, body } = routeCapture(draft);
-    if (kind === "task" && !categoryOverride) {
+
+    // An explicit type from the capture chips wins; otherwise fall back to
+    // parsing a "task:/quote:/journal:/note:" prefix out of the text.
+    let kind: string;
+    let body: string;
+    if (intent?.type) {
+      kind = intent.type.toLowerCase();
+      body = draft.trim();
+    } else {
+      const routed = routeCapture(draft);
+      kind = routed.kind;
+      body = routed.body;
+    }
+
+    if (kind === "task") {
       const id = `t${Date.now()}`;
-      const newTask: Task = { id, title: body, done: false, starred: false };
+      const project = intent?.projectId
+        ? projects.find((p) => p.id === intent.projectId)
+        : undefined;
+      const newTask: Task = {
+        id, title: body, done: false, starred: false,
+        projectId: project?.id,
+        projectName: project?.name,
+        projectColor: project?.color,
+      };
       setTasks((prev) => [newTask, ...prev]);
-      void supabase.from("tasks").insert({ id, title: body, status: "open", starred: false, user_id: userId });
-      showToast("Added to Tasks");
+      void supabase.from("tasks").insert({
+        id, title: body, status: "open", starred: false,
+        project_id: project?.id ?? null, user_id: userId,
+      });
+      showToast(project ? `Added to Tasks · ${project.name}` : "Added to Tasks");
     } else {
       const id = `n${Date.now()}`;
-      const baseCategory: LibraryCategory =
-        kind === "quote" ? "Quotes" : kind === "journal" ? "Journal" : "Notes";
-      const category = (categoryOverride as LibraryCategory | undefined) ?? baseCategory;
-      const tag = (categoryOverride ?? category).toUpperCase().replace(/\s+/g, "_");
+      // Known note kinds map to their category; anything else is a folder name.
+      const category: LibraryCategory =
+        kind === "quote" ? "Quotes"
+        : kind === "journal" ? "Journal"
+        : kind === "note" ? "Notes"
+        : ((intent?.type ?? "Notes") as LibraryCategory);
+      const tag = category.toUpperCase().replace(/\s+/g, "_");
       const newNote: LibraryNote = {
         id, category, label: category.toUpperCase(),
         date: todayStr(), body,
@@ -546,7 +577,7 @@ export function AppStateProvider({
       showToast(`Added to Library · ${category}`);
     }
     closeCapture();
-  }, [draft, userId, closeCapture, showToast]);
+  }, [draft, userId, projects, closeCapture, showToast]);
 
   const deleteNote = useCallback((id: string) => {
     setNotes((prev) => prev.filter((n) => n.id !== id));
