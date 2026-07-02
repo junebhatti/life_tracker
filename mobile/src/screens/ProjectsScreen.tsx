@@ -28,6 +28,7 @@ function CheckIcon({ done }: { done: boolean }) {
 }
 
 function ProjectDetail({ project, onClose }: { project: Project; onClose: () => void }) {
+  const { toggleMilestone, toggleChecklistItem } = useAppState();
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.sheetWrap}>
@@ -49,10 +50,10 @@ function ProjectDetail({ project, onClose }: { project: Project; onClose: () => 
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>Milestones</Text>
               {project.milestones.map((m) => (
-                <View key={m.id} style={styles.itemRow}>
+                <Pressable key={m.id} style={styles.itemRow} onPress={() => toggleMilestone(project.id, m.id)}>
                   <CheckIcon done={m.done} />
-                  <Text style={[styles.itemText, m.done && styles.itemDone]}>{m.text}</Text>
-                </View>
+                  <Text style={[styles.itemText, m.done && styles.itemDone]}>{m.title}</Text>
+                </Pressable>
               ))}
             </View>
           ) : null}
@@ -61,10 +62,10 @@ function ProjectDetail({ project, onClose }: { project: Project; onClose: () => 
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>Checklist</Text>
               {project.checklist.map((c) => (
-                <View key={c.id} style={styles.itemRow}>
+                <Pressable key={c.id} style={styles.itemRow} onPress={() => toggleChecklistItem(project.id, c.id)}>
                   <CheckIcon done={c.done} />
-                  <Text style={[styles.itemText, c.done && styles.itemDone]}>{c.text}</Text>
-                </View>
+                  <Text style={[styles.itemText, c.done && styles.itemDone]}>{c.title}</Text>
+                </Pressable>
               ))}
             </View>
           ) : null}

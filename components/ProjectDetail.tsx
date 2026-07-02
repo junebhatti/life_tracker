@@ -81,6 +81,8 @@ export default function ProjectDetail() {
   // New task modal
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  // Compact color popover (opened from the small dot next to the title)
+  const [showColors, setShowColors] = useState(false);
 
   const project = getProject(id);
 
@@ -190,11 +192,46 @@ export default function ProjectDetail() {
             </p>
           )}
           <h1 className="mt-1 flex items-center gap-2 text-3xl font-semibold tracking-tight text-foreground">
-            <span
-              className="h-3 w-3 rounded-full"
-              style={{ backgroundColor: project.color }}
-              aria-hidden="true"
-            />
+            <span className="relative flex items-center">
+              <button
+                type="button"
+                onClick={() => setShowColors((v) => !v)}
+                aria-label="Change project color"
+                title="Change color"
+                className="h-3 w-3 rounded-full ring-offset-2 transition hover:ring-2 hover:ring-neutral-300"
+                style={{ backgroundColor: project.color }}
+              />
+              {showColors && (
+                <>
+                  <button
+                    type="button"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    className="fixed inset-0 z-10 cursor-default"
+                    onClick={() => setShowColors(false)}
+                  />
+                  <div className="absolute left-0 top-6 z-20 flex w-[128px] flex-wrap gap-1.5 rounded-lg border border-border bg-background p-2 shadow-lg">
+                    {PROJECT_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => {
+                          updateProject(project.id, { color: c });
+                          setShowColors(false);
+                        }}
+                        aria-label={`Set color ${c}`}
+                        className={`h-5 w-5 rounded-full border-2 transition ${
+                          project.color === c
+                            ? "border-neutral-800"
+                            : "border-transparent hover:scale-110"
+                        }`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </span>
             {project.name}
           </h1>
         </div>
@@ -213,26 +250,6 @@ export default function ProjectDetail() {
           </button>
         </div>
       </div>
-
-      {/* Color */}
-      <Section title="Color">
-        <div className="flex flex-wrap gap-2">
-          {PROJECT_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => updateProject(project.id, { color: c })}
-              aria-label={`Set color ${c}`}
-              className={`h-6 w-6 rounded-full border-2 transition-transform ${
-                project.color === c
-                  ? "scale-110 border-neutral-800"
-                  : "border-transparent hover:scale-105"
-              }`}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
-      </Section>
 
       {/* Hours */}
       <Section title="Hours">

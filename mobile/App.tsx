@@ -33,7 +33,6 @@ import { supabase } from "./src/lib/supabase";
 import { colors } from "./src/theme";
 import { AppStateProvider, useAppState } from "./src/state/AppState";
 import BottomNav, { TabKey } from "./src/components/BottomNav";
-import NotificationBell from "./src/components/NotificationBell";
 import Fabs from "./src/components/Fabs";
 import Toast from "./src/components/Toast";
 import QuickCaptureModal from "./src/components/QuickCaptureModal";
@@ -53,8 +52,6 @@ function AppShell() {
 
   return (
     <View style={styles.app}>
-      <NotificationBell count={1} />
-
       {isScrapbook ? (
         <ScrapbookScreen />
       ) : (

@@ -41,8 +41,8 @@ type NoteRow = {
 type ProjectRow = {
   id: string; name: string; color: string; type: string;
   client?: string | null; target?: string | null;
-  milestones?: Array<{ id: string; text: string; done: boolean }>;
-  checklist?: Array<{ id: string; text: string; done: boolean }>;
+  milestones?: Milestone[];
+  checklist?: ChecklistItem[];
 };
 type PersonRow = { id: string; name: string };
 type RoutineRow = {
@@ -176,6 +176,8 @@ type AppStateValue = {
   toggleTaskDone: (id: string) => void;
   toggleTaskStar: (id: string) => void;
   toggleRoutine: (id: string) => void;
+  toggleMilestone: (projectId: string, milestoneId: string) => void;
+  toggleChecklistItem: (projectId: string, itemId: string) => void;
   healthExpanded: boolean;
   toggleHealthExpanded: () => void;
   categories: string[];
@@ -458,6 +460,41 @@ export function AppStateProvider({
     })();
   }, []);
 
+  // Flip a milestone/checklist item's done state locally, then persist the whole
+  // updated array to the project's jsonb column so the web app (same table) sees it.
+  const persistProjectField = useCallback(
+    (projectId: string, field: "milestones" | "checklist", value: Milestone[] | ChecklistItem[]) => {
+      void supabase.from("projects").update({ [field]: value }).eq("id", projectId);
+    },
+    [],
+  );
+
+  const toggleMilestone = useCallback((projectId: string, milestoneId: string) => {
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        const milestones = p.milestones.map((m) =>
+          m.id === milestoneId ? { ...m, done: !m.done } : m,
+        );
+        persistProjectField(projectId, "milestones", milestones);
+        return { ...p, milestones };
+      }),
+    );
+  }, [persistProjectField]);
+
+  const toggleChecklistItem = useCallback((projectId: string, itemId: string) => {
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        const checklist = p.checklist.map((c) =>
+          c.id === itemId ? { ...c, done: !c.done } : c,
+        );
+        persistProjectField(projectId, "checklist", checklist);
+        return { ...p, checklist };
+      }),
+    );
+  }, [persistProjectField]);
+
   const toggleHealthExpanded = useCallback(() => setHealthExpanded((v) => !v), []);
   const openNote = useCallback((id: string | null) => setSelectedNoteId(id), []);
   const openProject = useCallback((id: string | null) => setSelectedProjectId(id), []);
@@ -540,7 +577,7 @@ export function AppStateProvider({
     () => ({
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, toggleRoutine,
+      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, setLibFilter,
@@ -555,7 +592,7 @@ export function AppStateProvider({
     [
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, toggleRoutine,
+      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, query,

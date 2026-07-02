@@ -21,8 +21,11 @@ export type AgendaEvent = {
 
 export type ProjectGroup = "Active" | "Retainers" | "Areas";
 
-export type Milestone = { id: string; text: string; done: boolean };
-export type ChecklistItem = { id: string; text: string; done: boolean };
+// Shapes mirror the web ProjectStore jsonb: milestones carry a weight, checklist
+// items a recurrence. Both use `title` (not `text`) so the two apps read/write
+// the same rows.
+export type Milestone = { id: string; title: string; weight?: number; done: boolean };
+export type ChecklistItem = { id: string; title: string; recurrence?: string; done: boolean };
 
 export type Project = {
   id: string;
