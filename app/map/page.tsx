@@ -430,7 +430,7 @@ function GeocoderPanel({
                   >
                     <p className="text-sm font-medium text-foreground">{r.name}</p>
                     <p className="text-[11px] text-muted truncate">{r.displayName}</p>
-                    {r.boundaryGeoJson && (
+                    {!!r.boundaryGeoJson && (
                       <p className="text-[10px] text-orange-600 uppercase tracking-wider mt-0.5">includes boundary</p>
                     )}
                   </button>
@@ -447,7 +447,7 @@ function GeocoderPanel({
               <span className="font-medium">{picked.city}</span>
               {picked.neighborhood && <> · {picked.neighborhood}</>}
               <span className="text-muted ml-2">({picked.lat.toFixed(4)}, {picked.lng.toFixed(4)})</span>
-              {picked.boundaryGeoJson && (
+              {!!picked.boundaryGeoJson && (
                 <span className="ml-2 text-orange-600">boundary</span>
               )}
             </div>

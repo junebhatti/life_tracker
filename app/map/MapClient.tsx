@@ -3,6 +3,7 @@
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from "react-leaflet";
+import type { GeoJsonObject } from "geojson";
 import { useEffect } from "react";
 import type { MapPlace } from "@/app/api/map/places/route";
 
@@ -61,10 +62,10 @@ export default function MapCanvas({
       {selected && <FlyTo lat={selected.lat} lng={selected.lng} />}
 
       {/* boundary polygon when selected place has one (e.g. a neighbourhood) */}
-      {selected?.boundaryGeoJson && (
+      {!!selected?.boundaryGeoJson && (
         <GeoJSON
           key={`boundary-${selected.id}`}
-          data={selected.boundaryGeoJson as GeoJSON.GeoJsonObject}
+          data={selected.boundaryGeoJson as GeoJsonObject}
           style={() => boundaryStyle}
         />
       )}
