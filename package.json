@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "npm run build:all",
     "build:mobile": "cd mobile && npm install --legacy-peer-deps && npm run build && cd .. && node scripts/copy-mobile-dist.js",
     "build:all": "npm run build:mobile && next build",
     "start": "next start",
