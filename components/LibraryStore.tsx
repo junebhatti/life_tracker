@@ -27,6 +27,7 @@ type LibraryNoteRow = {
   source_modified_at: string | null;
   synced_at: string;
   created_at: string;
+  archived_at: string | null;
 };
 
 function fromRow(row: LibraryNoteRow): LibraryNote {
@@ -119,6 +120,7 @@ export function LibraryStoreProvider({
       .from("library_notes")
       .select("*")
       .eq("user_id", user.id)
+      .is("archived_at", null)
       .then(({ data, error }) => {
         if (!active) return;
         if (error) {
@@ -145,7 +147,12 @@ export function LibraryStoreProvider({
             setNotes((prev) => prev.filter((n) => n.id !== oldId));
             return;
           }
-          const next = fromRow(payload.new as LibraryNoteRow);
+          const row = payload.new as LibraryNoteRow;
+          if (row.archived_at) {
+            setNotes((prev) => prev.filter((n) => n.id !== row.id));
+            return;
+          }
+          const next = fromRow(row);
           setNotes((prev) => {
             const idx = prev.findIndex((n) => n.id === next.id);
             if (idx === -1) return [...prev, next];
@@ -169,10 +176,10 @@ export function LibraryStoreProvider({
       if (!user) return;
       supabase
         .from("library_notes")
-        .delete()
+        .update({ archived_at: new Date().toISOString() })
         .eq("id", id)
         .then(({ error }) => {
-          if (error) console.error("Failed to delete note", error);
+          if (error) console.error("Failed to archive note", error);
         });
     },
     [user],

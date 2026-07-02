@@ -25,6 +25,9 @@
       "display": "standalone",
       "orientation": "portrait",
       "shortName": "Life Tracker"
+    },
+    "experiments": {
+      "baseUrl": "/app"
     }
   }
 }

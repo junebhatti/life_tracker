@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AppState as RNAppState } from "react-native";
 import { supabase } from "../lib/supabase";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "";
@@ -10,17 +11,19 @@ function scrapHeaders(): Record<string, string> {
 import type {
   AgendaEvent,
   CaptureKind,
+  ChecklistItem,
+  HealthData,
   LibraryCategory,
   LibraryFilter,
   LibraryNote,
+  Milestone,
   Person,
   Project,
+  Routine,
   ScrapItem,
   Task,
 } from "../types";
 
-const DEMO_TRANSCRIPT =
-  "Quick note to self — remember to follow up on the Fetter Pools report and grab groceries on the way home.";
 
 // ---------------------------------------------------------------------------
 // Supabase row types
@@ -38,9 +41,14 @@ type NoteRow = {
 type ProjectRow = {
   id: string; name: string; color: string; type: string;
   client?: string | null; target?: string | null;
-  milestones?: unknown[]; checklist?: unknown[];
+  milestones?: Array<{ id: string; text: string; done: boolean }>;
+  checklist?: Array<{ id: string; text: string; done: boolean }>;
 };
 type PersonRow = { id: string; name: string };
+type RoutineRow = {
+  id: string; title: string; description?: string | null;
+  period: string; streak_goal?: number | null; history: string[];
+};
 type EditableEvent = {
   id: string; title: string; location?: string | null;
   allDay: boolean; start: string; end: string; accountKey: string;
@@ -93,18 +101,35 @@ function mapNote(row: NoteRow): LibraryNote {
 function mapProject(row: ProjectRow): Project {
   const group =
     row.type === "retainer" ? "Retainers" : row.type === "area" ? "Areas" : "Active";
-  const milestoneDone = Array.isArray(row.milestones)
-    ? row.milestones.filter((m: unknown) => (m as { done?: boolean }).done).length
-    : 0;
-  const milestoneTotal = Array.isArray(row.milestones) ? row.milestones.length : 0;
+  const milestones: Milestone[] = Array.isArray(row.milestones) ? row.milestones : [];
+  const checklist: ChecklistItem[] = Array.isArray(row.checklist) ? row.checklist : [];
+  const milestoneDone = milestones.filter((m) => m.done).length;
   const meta = [
     row.client,
-    milestoneTotal ? `${milestoneDone}/${milestoneTotal} milestones` : null,
+    milestones.length ? `${milestoneDone}/${milestones.length} milestones` : null,
     row.target ? `Target ${row.target}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
-  return { id: row.id, name: row.name, color: row.color, group, meta };
+  return {
+    id: row.id, name: row.name, color: row.color, group, meta,
+    client: row.client ?? undefined, target: row.target ?? undefined,
+    milestones, checklist,
+  };
+}
+
+function mapRoutine(row: RoutineRow): Routine {
+  const todayKey = new Date().toLocaleDateString("en-CA");
+  const history: string[] = Array.isArray(row.history) ? row.history : [];
+  const doneToday = history.includes(todayKey);
+  const streak = history.length;
+  return {
+    id: row.id, title: row.title,
+    description: row.description ?? undefined,
+    period: row.period,
+    streakGoal: row.streak_goal ?? undefined,
+    doneToday, streak,
+  };
 }
 
 function mapPerson(row: PersonRow): Person {
@@ -143,11 +168,17 @@ type AppStateValue = {
   people: Person[];
   agenda: AgendaEvent[];
   scrapItems: ScrapItem[];
+  routines: Routine[];
+  health: HealthData | null;
   loading: boolean;
+  refreshing: boolean;
+  refreshAll: () => Promise<void>;
   toggleTaskDone: (id: string) => void;
   toggleTaskStar: (id: string) => void;
+  toggleRoutine: (id: string) => void;
   healthExpanded: boolean;
   toggleHealthExpanded: () => void;
+  categories: string[];
   libFilter: LibraryFilter;
   setLibFilter: (f: LibraryFilter) => void;
   query: string;
@@ -155,15 +186,15 @@ type AppStateValue = {
   selectedNoteId: string | null;
   openNote: (id: string | null) => void;
   updateNote: (id: string, patch: Partial<LibraryNote>) => void;
-  capture: "text" | "voice" | null;
+  selectedProjectId: string | null;
+  openProject: (id: string | null) => void;
+  capture: "text" | null;
   draft: string;
   setDraft: (s: string) => void;
-  openCapture: (kind: "text" | "voice") => void;
+  openCapture: () => void;
   closeCapture: () => void;
-  submitCapture: () => void;
-  voiceText: string;
-  seconds: number;
-  stopVoice: () => void;
+  submitCapture: (categoryOverride?: string) => void;
+  deleteNote: (id: string) => void;
   toast: string | null;
   showToast: (msg: string) => void;
   signOut: () => Promise<void>;
@@ -199,21 +230,21 @@ export function AppStateProvider({
   const [people, setPeople] = useState<Person[]>([]);
   const [agenda, setAgenda] = useState<AgendaEvent[]>([]);
   const [scrapItems, setScrapItems] = useState<ScrapItem[]>([]);
+  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [healthExpanded, setHealthExpanded] = useState(false);
   const [libFilter, setLibFilter] = useState<LibraryFilter>("All");
   const [query, setQuery] = useState("");
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const [capture, setCapture] = useState<"text" | "voice" | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [capture, setCapture] = useState<"text" | null>(null);
   const [draft, setDraft] = useState("");
-  const [voiceText, setVoiceText] = useState("");
-  const [seconds, setSeconds] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const voiceTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const transcriptIndex = useRef(0);
 
   // ---- data loading -------------------------------------------------------
 
@@ -231,6 +262,8 @@ export function AppStateProvider({
       loadPeople(),
       loadAgenda(),
       loadScrapbook(),
+      loadRoutines(),
+      loadHealth(),
     ]);
     setLoading(false);
   }
@@ -249,6 +282,7 @@ export function AppStateProvider({
       .from("library_notes")
       .select("id,title,content,category,manual_title,manual_content,tags,manual_tags,created_at")
       .eq("user_id", userId)
+      .is("archived_at", null)
       .order("created_at", { ascending: false });
     if (data) setNotes((data as NoteRow[]).map(mapNote));
   }
@@ -300,6 +334,85 @@ export function AppStateProvider({
     }
   }
 
+  async function loadRoutines() {
+    const { data } = await supabase
+      .from("routines")
+      .select("id,title,description,period,streak_goal,history")
+      .eq("user_id", userId)
+      .order("created_at");
+    if (data) setRoutines((data as RoutineRow[]).map(mapRoutine));
+  }
+
+  async function loadHealth() {
+    if (!API_URL) return;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const res = await fetch(`${API_URL}/api/health/snapshot?timezone=${encodeURIComponent(tz)}`);
+      const json = (await res.json()) as {
+        configured?: boolean;
+        snapshot?: {
+          sleep?: { hours: number; start?: string; end?: string; stages?: { deepMinutes?: number; lightMinutes?: number; remMinutes?: number; awakeMinutes?: number } };
+          restingHeartRate?: number;
+          steps?: number;
+          nutrition?: { calories?: number; proteinGrams?: number; carbsGrams?: number; fatGrams?: number };
+        };
+      };
+      if (json.snapshot) {
+        const s = json.snapshot;
+        setHealth({
+          sleepHours: s.sleep?.hours,
+          sleepStart: s.sleep?.start,
+          sleepEnd: s.sleep?.end,
+          deepMinutes: s.sleep?.stages?.deepMinutes,
+          lightMinutes: s.sleep?.stages?.lightMinutes,
+          remMinutes: s.sleep?.stages?.remMinutes,
+          awakeMinutes: s.sleep?.stages?.awakeMinutes,
+          restingHR: s.restingHeartRate,
+          steps: s.steps,
+          calories: s.nutrition?.calories,
+          protein: s.nutrition?.proteinGrams,
+          carbs: s.nutrition?.carbsGrams,
+          fat: s.nutrition?.fatGrams,
+        });
+      }
+    } catch {
+      // offline or not configured — leave null
+    }
+  }
+
+  // Re-pull everything without clearing the screen (used by the manual Sync
+  // button and by the foreground refetch below).
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.allSettled([
+      loadTasks(),
+      loadNotes(),
+      loadProjects(),
+      loadPeople(),
+      loadAgenda(),
+      loadScrapbook(),
+      loadRoutines(),
+      loadHealth(),
+    ]);
+    setRefreshing(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // When the app returns to the foreground (e.g. reopening the installed PWA
+  // from the home screen), silently re-pull the live data — health/steps and
+  // calendar would otherwise stay frozen at whatever they were when it opened.
+  useEffect(() => {
+    const sub = RNAppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void loadHealth();
+        void loadAgenda();
+        void loadTasks();
+      }
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   // ---- mutations ----------------------------------------------------------
 
   const showToast = useCallback((msg: string) => {
@@ -331,8 +444,23 @@ export function AppStateProvider({
     });
   }, []);
 
+  const toggleRoutine = useCallback((id: string) => {
+    const todayKey = new Date().toLocaleDateString("en-CA");
+    setRoutines((prev) => prev.map((r) => (r.id === id ? { ...r, doneToday: !r.doneToday } : r)));
+    void (async () => {
+      const { data } = await supabase.from("routines").select("history").eq("id", id).single();
+      if (!data) return;
+      const history: string[] = Array.isArray(data.history) ? data.history : [];
+      const newHistory = history.includes(todayKey)
+        ? history.filter((d) => d !== todayKey)
+        : [...history, todayKey];
+      await supabase.from("routines").update({ history: newHistory }).eq("id", id);
+    })();
+  }, []);
+
   const toggleHealthExpanded = useCallback(() => setHealthExpanded((v) => !v), []);
   const openNote = useCallback((id: string | null) => setSelectedNoteId(id), []);
+  const openProject = useCallback((id: string | null) => setSelectedProjectId(id), []);
 
   const updateNote = useCallback((id: string, patch: Partial<LibraryNote>) => {
     setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
@@ -344,34 +472,19 @@ export function AppStateProvider({
     }
   }, []);
 
-  const openCapture = useCallback((kind: "text" | "voice") => {
-    setCapture(kind);
-    if (kind === "voice") {
-      setSeconds(0);
-      setVoiceText("");
-      transcriptIndex.current = 0;
-      const words = DEMO_TRANSCRIPT.split(" ");
-      voiceTimer.current = setInterval(() => {
-        setSeconds((s) => s + 1);
-        transcriptIndex.current = Math.min(transcriptIndex.current + 2, words.length);
-        setVoiceText(words.slice(0, transcriptIndex.current).join(" "));
-      }, 1000);
-    }
+  const openCapture = useCallback(() => {
+    setCapture("text");
   }, []);
 
   const closeCapture = useCallback(() => {
     setCapture(null);
     setDraft("");
-    if (voiceTimer.current) {
-      clearInterval(voiceTimer.current);
-      voiceTimer.current = null;
-    }
   }, []);
 
-  const submitCapture = useCallback(() => {
+  const submitCapture = useCallback((categoryOverride?: string) => {
     if (!draft.trim()) return;
     const { kind, body } = routeCapture(draft);
-    if (kind === "task") {
+    if (kind === "task" && !categoryOverride) {
       const id = `t${Date.now()}`;
       const newTask: Task = { id, title: body, done: false, starred: false };
       setTasks((prev) => [newTask, ...prev]);
@@ -379,48 +492,32 @@ export function AppStateProvider({
       showToast("Added to Tasks");
     } else {
       const id = `n${Date.now()}`;
-      const category: LibraryCategory =
+      const baseCategory: LibraryCategory =
         kind === "quote" ? "Quotes" : kind === "journal" ? "Journal" : "Notes";
+      const category = (categoryOverride as LibraryCategory | undefined) ?? baseCategory;
+      const tag = (categoryOverride ?? category).toUpperCase().replace(/\s+/g, "_");
       const newNote: LibraryNote = {
-        id,
-        category,
-        label: category.toUpperCase(),
-        date: todayStr(),
-        body,
-        tags: category === "Journal" ? ["JOURNAL", "PERSONAL"] : [category.toUpperCase()],
+        id, category, label: category.toUpperCase(),
+        date: todayStr(), body,
+        tags: [tag],
       };
       setNotes((prev) => [newNote, ...prev]);
       void supabase.from("library_notes").insert({
         id, path: `capture/${id}`, title: body.slice(0, 80),
-        content: body, category, tags: newNote.tags, manual_tags: [], user_id: userId,
+        content: body, category, tags: [tag], manual_tags: [], user_id: userId,
       });
       showToast(`Added to Library · ${category}`);
     }
     closeCapture();
   }, [draft, userId, closeCapture, showToast]);
 
-  const stopVoice = useCallback(() => {
-    if (voiceTimer.current) {
-      clearInterval(voiceTimer.current);
-      voiceTimer.current = null;
-    }
-    const finalText = voiceText || DEMO_TRANSCRIPT;
-    const id = `n${Date.now()}`;
-    const newNote: LibraryNote = {
-      id, category: "Journal", label: "JOURNAL", sub: "VIA VOICE",
-      date: todayStr(), body: finalText, tags: ["JOURNAL", "PERSONAL", "VOICE"],
-    };
-    setNotes((prev) => [newNote, ...prev]);
-    void supabase.from("library_notes").insert({
-      id, path: `capture/${id}`, title: finalText.slice(0, 80),
-      content: finalText, category: "Journal",
-      tags: ["JOURNAL", "PERSONAL", "VOICE"], manual_tags: [], user_id: userId,
-    });
-    setCapture(null);
-    setVoiceText("");
-    setSeconds(0);
-    showToast("Saved to Journal");
-  }, [voiceText, userId, showToast]);
+  const deleteNote = useCallback((id: string) => {
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+    void supabase
+      .from("library_notes")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", id);
+  }, []);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -429,33 +526,43 @@ export function AppStateProvider({
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      if (voiceTimer.current) clearInterval(voiceTimer.current);
     };
   }, []);
 
   // ---- context value ------------------------------------------------------
 
+  const categories = useMemo(
+    () => [...new Set(notes.map((n) => n.category).filter(Boolean))].sort() as string[],
+    [notes],
+  );
+
   const value = useMemo<AppStateValue>(
     () => ({
-      tasks, notes, projects, people, agenda, scrapItems, loading,
-      toggleTaskDone, toggleTaskStar,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
+      refreshing, refreshAll,
+      toggleTaskDone, toggleTaskStar, toggleRoutine,
       healthExpanded, toggleHealthExpanded,
+      categories,
       libFilter, setLibFilter,
       query, setQuery,
       selectedNoteId, openNote, updateNote,
+      selectedProjectId, openProject,
       capture, draft, setDraft, openCapture, closeCapture, submitCapture,
-      voiceText, seconds, stopVoice,
+      deleteNote,
       toast, showToast,
       signOut,
     }),
     [
-      tasks, notes, projects, people, agenda, scrapItems, loading,
-      toggleTaskDone, toggleTaskStar,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
+      refreshing, refreshAll,
+      toggleTaskDone, toggleTaskStar, toggleRoutine,
       healthExpanded, toggleHealthExpanded,
+      categories,
       libFilter, query,
       selectedNoteId, openNote, updateNote,
+      selectedProjectId, openProject,
       capture, draft, openCapture, closeCapture, submitCapture,
-      voiceText, seconds, stopVoice,
+      deleteNote,
       toast, showToast,
       signOut,
     ],

@@ -3,6 +3,7 @@
 import Checkbox from "./Checkbox";
 import { useProjects } from "./ProjectStore";
 import { dueLabel, isOverdue, type Task } from "@/lib/tasks";
+import { thingsAddUrl } from "@/lib/things";
 
 type TaskRowProps = {
   task: Task;
@@ -73,6 +74,14 @@ export default function TaskRow({
           </div>
         )}
       </div>
+
+      <a
+        href={thingsAddUrl(task, project?.name)}
+        title="Send to Things"
+        className="shrink-0 text-[11px] uppercase tracking-wider text-muted opacity-0 transition-colors hover:text-foreground group-hover:opacity-100"
+      >
+        Things
+      </a>
 
       {onEdit && (
         <button
