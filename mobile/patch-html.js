@@ -28,3 +28,37 @@ fs.writeFileSync(
   JSON.stringify({ buildId }),
 );
 console.log(`Wrote dist/version.json (buildId: ${buildId})`);
+
+// Service worker whose only job is guaranteeing this installed PWA picks up
+// new deployments. iOS treats an added-to-home-screen page like a native app
+// process — reopening it often resumes a frozen/previous state instead of
+// making a real network request, so plain Cache-Control headers alone can't
+// reach it. A registered service worker changes that: the browser byte-compares
+// this file on (roughly) every load, and CACHE_VERSION below changes on every
+// deploy, so a new worker installs, takes over, and reloads the page exactly
+// once (see the registration code in App.tsx).
+const swSource = `
+const CACHE_VERSION = ${JSON.stringify(buildId)};
+
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+// Network-first for navigations, so the HTML shell is always fetched fresh
+// instead of served from any disk/HTTP cache. Everything else (hashed,
+// immutable JS/asset bundles) is left untouched — this worker caches nothing.
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request, { cache: "no-store" }).catch(() => fetch(event.request))
+    );
+  }
+});
+`.trimStart();
+
+fs.writeFileSync(path.join(__dirname, "dist", "sw.js"), swSource);
+console.log(`Wrote dist/sw.js (CACHE_VERSION: ${buildId})`);

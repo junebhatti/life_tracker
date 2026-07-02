@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -77,11 +77,33 @@ function AppShell() {
   );
 }
 
+/**
+ * Register the update-detection service worker (mobile/patch-html.js writes
+ * dist/sw.js with the deploy's build id baked in). Runs once, before login, so
+ * even a signed-out session benefits. Reopening an installed iOS PWA can resume
+ * a frozen previous process instead of hitting the network at all, which is why
+ * Cache-Control headers alone can't reach it — a registered service worker is
+ * what the browser reliably re-checks (byte-for-byte) on load. When a new one
+ * activates and takes over, reload exactly once to run the new bundle.
+ */
+function registerServiceWorker() {
+  if (Platform.OS !== "web" || typeof navigator === "undefined") return;
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("/app/sw.js").catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
+    registerServiceWorker();
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setAuthReady(true);
