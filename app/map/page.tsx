@@ -23,9 +23,13 @@ function groupPlaces(places: MapPlace[]) {
   return cities;
 }
 
+function authHeaders(token: string | undefined): HeadersInit {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // ── geocoder search hook ──────────────────────────────────────────────────────
 
-function useGeocode(query: string) {
+function useGeocode(query: string, token: string | undefined) {
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const [searching, setSearching] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -36,7 +40,9 @@ function useGeocode(query: string) {
     timerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`/api/map/geocode?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/map/geocode?q=${encodeURIComponent(query)}`, {
+          headers: authHeaders(token),
+        });
         if (res.ok) {
           const json = await res.json() as { results: GeocodeResult[] };
           setResults(json.results);
@@ -45,7 +51,7 @@ function useGeocode(query: string) {
         setSearching(false);
       }
     }, 400);
-  }, [query]);
+  }, [query, token]);
 
   return { results, searching };
 }
@@ -55,7 +61,9 @@ function useGeocode(query: string) {
 type PanelMode = "none" | "add" | "edit" | "detail";
 
 export default function MapPage() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
+  const token = session?.access_token;
+
   const [places, setPlaces] = useState<MapPlace[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -67,12 +75,13 @@ export default function MapPage() {
   // ── fetch ─────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/map/places");
+    if (!token) return;
+    const res = await fetch("/api/map/places", { headers: authHeaders(token) });
     if (!res.ok) return;
     const json = await res.json() as { places: MapPlace[] };
     setPlaces(json.places);
     setLoading(false);
-  }, []);
+  }, [token]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -112,7 +121,10 @@ export default function MapPage() {
   // ── delete ────────────────────────────────────────────────────────────────
 
   async function handleDelete(id: string) {
-    await fetch(`/api/map/places/${id}`, { method: "DELETE" });
+    await fetch(`/api/map/places/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
     setSelectedPlace(null);
     setPanel("none");
     load();
@@ -195,7 +207,6 @@ export default function MapPage() {
           />
         </div>
 
-        {/* detail panel */}
         {panel === "detail" && selectedPlace && (
           <DetailPanel
             place={selectedPlace}
@@ -207,16 +218,16 @@ export default function MapPage() {
           />
         )}
 
-        {/* add panel */}
         {panel === "add" && (
           <GeocoderPanel
             title="Add Place"
             defaultCity={activeCity ?? ""}
+            token={token}
             onClose={() => setPanel("none")}
             onSave={async (payload) => {
               const res = await fetch("/api/map/places", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...authHeaders(token) },
                 body: JSON.stringify(payload),
               });
               if (res.ok) { setPanel("none"); load(); }
@@ -224,17 +235,17 @@ export default function MapPage() {
           />
         )}
 
-        {/* edit panel */}
         {panel === "edit" && selectedPlace && (
           <GeocoderPanel
             title="Edit Place"
             defaultCity={selectedPlace.city}
             initial={selectedPlace}
+            token={token}
             onClose={() => setPanel("detail")}
             onSave={async (payload) => {
               await fetch(`/api/map/places/${selectedPlace.id}`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...authHeaders(token) },
                 body: JSON.stringify(payload),
               });
               setPanel("none");
@@ -330,21 +341,21 @@ function GeocoderPanel({
   title,
   defaultCity,
   initial,
+  token,
   onClose,
   onSave,
 }: {
   title: string;
   defaultCity: string;
   initial?: MapPlace;
+  token: string | undefined;
   onClose: () => void;
   onSave: (payload: SavePayload) => Promise<void>;
 }) {
-  // search state
   const [query, setQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
-  const { results, searching } = useGeocode(query);
+  const { results, searching } = useGeocode(query, token);
 
-  // chosen place state
   const [picked, setPicked] = useState<{
     name: string;
     city: string;
@@ -413,7 +424,8 @@ function GeocoderPanel({
             value={query}
             onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
             onFocus={() => setShowResults(true)}
-            placeholder="e.g. Frogtown, LA  or  Cosa Nostra restaurant"
+            onBlur={() => setTimeout(() => setShowResults(false), 150)}
+            placeholder="Frogtown, LA  ·  Cosa Nostra restaurant"
             autoComplete="off"
           />
           {searching && (
@@ -440,15 +452,13 @@ function GeocoderPanel({
           )}
         </div>
 
-        {/* filled details after picking */}
         {picked && (
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <div className="rounded-md bg-neutral-50 border border-border px-3 py-2 text-[12px] text-foreground leading-snug">
               <span className="font-medium">{picked.city}</span>
               {picked.neighborhood && <> · {picked.neighborhood}</>}
-              <span className="text-muted ml-2">({picked.lat.toFixed(4)}, {picked.lng.toFixed(4)})</span>
               {!!picked.boundaryGeoJson && (
-                <span className="ml-2 text-orange-600">boundary</span>
+                <span className="ml-2 text-orange-600">· boundary</span>
               )}
             </div>
 
@@ -493,7 +503,7 @@ function GeocoderPanel({
 
         {!picked && (
           <p className="text-[12px] text-muted leading-relaxed">
-            Search above and select a result — coordinates and boundary are auto-filled.
+            Search above and select a result — coordinates and boundary are filled automatically.
           </p>
         )}
       </div>
