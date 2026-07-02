@@ -3,10 +3,15 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 
+/** Short build id, stamped in at deploy time (the Vercel commit SHA). */
+const BUILD_ID = (process.env.EXPO_PUBLIC_BUILD_ID ?? "dev").slice(0, 7);
+
 /**
- * Foreground / cache-busting reload so a home-screen PWA can pull a freshly
- * deployed build without being reinstalled. Clearing the caches first means the
- * service worker (if any) hands back the new bundle instead of the cached one.
+ * Pull the freshly deployed build into a home-screen PWA without reinstalling.
+ * The HTML shell is served no-store (see next.config headers), but iOS PWAs can
+ * still be sticky, so we also (a) purge Cache Storage + any service worker and
+ * (b) navigate to a cache-busting URL, which forces a fresh fetch of the shell
+ * and therefore the newest hashed JS bundle.
  */
 async function reloadApp() {
   if (Platform.OS !== "web" || typeof window === "undefined") return;
@@ -21,9 +26,10 @@ async function reloadApp() {
       await Promise.all(regs.map((r) => r.unregister()));
     }
   } catch {
-    // best-effort — fall through to a plain reload
+    // best-effort — fall through to the cache-busting navigation
   }
-  window.location.reload();
+  const base = window.location.pathname.replace(/[?#].*$/, "");
+  window.location.replace(`${base}?u=${Date.now()}`);
 }
 
 function nowLabel(): string {
@@ -69,6 +75,8 @@ export default function TodaySettings() {
           <Text style={[styles.rowTitle, styles.signOut]}>Sign out</Text>
         </View>
       </Pressable>
+
+      <Text style={styles.build}>Build {BUILD_ID}</Text>
     </View>
   );
 }
@@ -111,4 +119,12 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   signOut: { color: colors.accentRed },
+  build: {
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: colors.textFaint,
+    marginTop: 14,
+  },
 });
