@@ -1,15 +1,22 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 import type { Task } from "../types";
 import { useAppState } from "../state/AppState";
+import { thingsAddUrl } from "../lib/things";
 
 export default function TaskRow({ task }: { task: Task }) {
-  const { toggleTaskDone, toggleTaskStar } = useAppState();
+  const { toggleTaskDone, toggleTaskStar, showToast } = useAppState();
   const [pendingDone, setPendingDone] = useState(false);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+
+  function sendToThings() {
+    Linking.openURL(thingsAddUrl(task)).catch(() =>
+      showToast("Couldn't open Things — is it installed?"),
+    );
+  }
 
   const visuallyDone = task.done || pendingDone;
 
@@ -57,6 +64,9 @@ export default function TaskRow({ task }: { task: Task }) {
           </View>
         ) : null}
       </View>
+      <Pressable onPress={sendToThings} hitSlop={8} style={styles.thingsBtn}>
+        <Text style={styles.thingsText}>Things</Text>
+      </Pressable>
       <Pressable onPress={() => toggleTaskStar(task.id)} hitSlop={8}>
         <Text style={[styles.star, task.starred ? styles.starFilled : styles.starHollow]}>
           {task.starred ? "★" : "☆"}
@@ -131,6 +141,16 @@ const styles = StyleSheet.create({
   },
   metaOverdue: {
     color: colors.overdueRed,
+  },
+  thingsBtn: {
+    marginTop: 2,
+  },
+  thingsText: {
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+    color: colors.textTertiary,
   },
   star: {
     fontSize: 17,
