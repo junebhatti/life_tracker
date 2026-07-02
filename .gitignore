@@ -20,6 +20,10 @@
 # production
 /build
 
+# mobile PWA build output, copied into public/app by scripts/copy-mobile-dist.js
+# (regenerated on every Vercel build via `npm run build:all`)
+/public/app
+
 # misc
 .DS_Store
 *.pem
