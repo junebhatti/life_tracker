@@ -505,9 +505,19 @@ export function AppStateProvider({
   // updated array to the project's jsonb column so the web app (same table) sees it.
   const persistProjectField = useCallback(
     (projectId: string, field: "milestones" | "checklist", value: Milestone[] | ChecklistItem[]) => {
-      void supabase.from("projects").update({ [field]: value }).eq("id", projectId);
+      void supabase
+        .from("projects")
+        .update({ [field]: value })
+        .eq("id", projectId)
+        .then(({ error }) => {
+          if (error) {
+            console.error(`Failed to save project ${field}`, error);
+            showToast("Couldn't save — check your connection");
+            void loadProjects();
+          }
+        });
     },
-    [],
+    [showToast],
   );
 
   const toggleMilestone = useCallback((projectId: string, milestoneId: string) => {
