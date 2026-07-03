@@ -185,7 +185,7 @@ type AppStateValue = {
   refreshAll: () => Promise<void>;
   toggleTaskDone: (id: string) => void;
   toggleTaskStar: (id: string) => void;
-  addTask: (title: string, opts?: { starred?: boolean }) => void;
+  addTask: (title: string, opts?: { starred?: boolean; projectId?: string }) => void;
   toggleRoutine: (id: string) => void;
   toggleMilestone: (projectId: string, milestoneId: string) => void;
   toggleChecklistItem: (projectId: string, itemId: string) => void;
@@ -425,19 +425,6 @@ export function AppStateProvider({
     }
   }
 
-  // Create a task directly (used by the Today page's inline "add a top task"
-  // slot). starred=true makes it show in Top 3.
-  const addTask = useCallback((title: string, opts?: { starred?: boolean }) => {
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    const id = `t${Date.now()}`;
-    const starred = opts?.starred ?? false;
-    setTasks((prev) => [{ id, title: trimmed, done: false, starred }, ...prev]);
-    void supabase.from("tasks").insert({
-      id, title: trimmed, status: "open", starred, user_id: userId,
-    });
-  }, [userId]);
-
   // Re-pull everything without clearing the screen (used by the manual Sync
   // button and by the foreground refetch below).
   const refreshAll = useCallback(async () => {
@@ -458,17 +445,18 @@ export function AppStateProvider({
   }, [userId]);
 
   // When the app returns to the foreground (e.g. reopening the installed PWA
-  // from the home screen), silently re-pull the live data — health/steps and
-  // calendar would otherwise stay frozen at whatever they were when it opened.
+  // from the home screen), silently re-pull the live *external* data — health/
+  // steps and calendar would otherwise stay frozen at whatever they were when it
+  // opened. We deliberately do NOT re-pull user-mutable tables (tasks, projects,
+  // notes, routines) here: an in-flight optimistic write could still be settling,
+  // and refetching would clobber the just-made change with pre-write DB state
+  // (the "I added a task, refreshed, and lost it" bug). Those sync on cold start
+  // and via the explicit Sync button.
   useEffect(() => {
     const sub = RNAppState.addEventListener("change", (state) => {
       if (state === "active") {
         void loadHealth();
         void loadAgenda();
-        void loadTasks();
-        void loadProjects();
-        void loadNotes();
-        void loadRoutines();
       }
     });
     return () => sub.remove();
@@ -483,28 +471,78 @@ export function AppStateProvider({
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
+  // Create a task directly (used by the Today page's inline "add a top task"
+  // slot and the project detail's "add task" row). starred=true → Top 3;
+  // projectId files it under a project.
+  const addTask = useCallback((title: string, opts?: { starred?: boolean; projectId?: string }) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const id = `t${Date.now()}`;
+    const starred = opts?.starred ?? false;
+    const project = opts?.projectId ? projects.find((p) => p.id === opts.projectId) : undefined;
+    setTasks((prev) => [
+      { id, title: trimmed, done: false, starred, projectId: project?.id, projectName: project?.name, projectColor: project?.color },
+      ...prev,
+    ]);
+    // NB: a Postgrest builder only fires its request when `.then()`/await runs.
+    // The `.then()` here is what actually sends the insert (and surfaces errors).
+    void supabase
+      .from("tasks")
+      .insert({ id, title: trimmed, status: "open", starred, project_id: project?.id ?? null, user_id: userId })
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to add task", error);
+          showToast("Couldn't save — check your connection");
+          void loadTasks();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, projects, showToast]);
+
   const toggleTaskDone = useCallback((id: string) => {
+    let newDone = false;
     setTasks((prev) => {
       const task = prev.find((t) => t.id === id);
       if (!task) return prev;
-      const newDone = !task.done;
-      void supabase
-        .from("tasks")
-        .update({ status: newDone ? "done" : "open", completed_at: newDone ? new Date().toISOString() : null })
-        .eq("id", id);
+      newDone = !task.done;
       return prev.map((t) => (t.id === id ? { ...t, done: newDone } : t));
     });
-  }, []);
+    // Chaining `.then()` is required — without it the update never reaches the DB.
+    void supabase
+      .from("tasks")
+      .update({ status: newDone ? "done" : "open", completed_at: newDone ? new Date().toISOString() : null })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to update task", error);
+          showToast("Couldn't save — check your connection");
+          void loadTasks();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
 
   const toggleTaskStar = useCallback((id: string) => {
+    let newStarred = false;
     setTasks((prev) => {
       const task = prev.find((t) => t.id === id);
       if (!task) return prev;
-      const newStarred = !task.starred;
-      void supabase.from("tasks").update({ starred: newStarred }).eq("id", id);
+      newStarred = !task.starred;
       return prev.map((t) => (t.id === id ? { ...t, starred: newStarred } : t));
     });
-  }, []);
+    void supabase
+      .from("tasks")
+      .update({ starred: newStarred })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to update task", error);
+          showToast("Couldn't save — check your connection");
+          void loadTasks();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
 
   const toggleRoutine = useCallback((id: string) => {
     const todayKey = new Date().toLocaleDateString("en-CA");
@@ -653,9 +691,20 @@ export function AppStateProvider({
     if (patch.body !== undefined) dbPatch.manual_content = patch.body;
     if (patch.label !== undefined) dbPatch.manual_title = patch.label;
     if (Object.keys(dbPatch).length) {
-      void supabase.from("library_notes").update(dbPatch).eq("id", id);
+      void supabase
+        .from("library_notes")
+        .update(dbPatch)
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) {
+            console.error("Failed to update note", error);
+            showToast("Couldn't save — check your connection");
+            void loadNotes();
+          }
+        });
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
 
   const openCapture = useCallback(() => {
     setCapture("text");
@@ -694,10 +743,16 @@ export function AppStateProvider({
         projectColor: project?.color,
       };
       setTasks((prev) => [newTask, ...prev]);
-      void supabase.from("tasks").insert({
-        id, title: body, status: "open", starred: false,
-        project_id: project?.id ?? null, user_id: userId,
-      });
+      void supabase
+        .from("tasks")
+        .insert({ id, title: body, status: "open", starred: false, project_id: project?.id ?? null, user_id: userId })
+        .then(({ error }) => {
+          if (error) {
+            console.error("Failed to add task", error);
+            showToast("Couldn't save — check your connection");
+            void loadTasks();
+          }
+        });
       showToast(project ? `Added to Tasks · ${project.name}` : "Added to Tasks");
     } else {
       const id = `n${Date.now()}`;
@@ -714,10 +769,16 @@ export function AppStateProvider({
         tags: [tag],
       };
       setNotes((prev) => [newNote, ...prev]);
-      void supabase.from("library_notes").insert({
-        id, path: `capture/${id}`, title: body.slice(0, 80),
-        content: body, category, tags: [tag], manual_tags: [], user_id: userId,
-      });
+      void supabase
+        .from("library_notes")
+        .insert({ id, path: `capture/${id}`, title: body.slice(0, 80), content: body, category, tags: [tag], manual_tags: [], user_id: userId })
+        .then(({ error }) => {
+          if (error) {
+            console.error("Failed to add note", error);
+            showToast("Couldn't save — check your connection");
+            void loadNotes();
+          }
+        });
       showToast(`Added to Library · ${category}`);
     }
     closeCapture();
@@ -728,8 +789,16 @@ export function AppStateProvider({
     void supabase
       .from("library_notes")
       .update({ archived_at: new Date().toISOString() })
-      .eq("id", id);
-  }, []);
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to delete note", error);
+          showToast("Couldn't save — check your connection");
+          void loadNotes();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();

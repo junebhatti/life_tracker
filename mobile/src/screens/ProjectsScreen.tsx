@@ -122,7 +122,7 @@ function ActivityForm({ onLog }: { onLog: (e: { kind: "work" | "update"; note: s
 // ── project detail ────────────────────────────────────────────────────────────
 
 function ProjectDetail({ project, onClose }: { project: Project; onClose: () => void }) {
-  const { toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addActivity, tasks } = useAppState();
+  const { toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addActivity, addTask, tasks } = useAppState();
   const openTasks = tasks.filter((t) => t.projectId === project.id && !t.done);
   const hours = projectHours(project);
 
@@ -162,8 +162,9 @@ function ProjectDetail({ project, onClose }: { project: Project; onClose: () => 
             <Text style={styles.sectionLabel}>{`Open Tasks${openTasks.length ? ` · ${openTasks.length}` : ""}`}</Text>
             {openTasks.map((t) => <TaskRow key={t.id} task={t} />)}
             {openTasks.length === 0 ? (
-              <Text style={styles.empty}>No open tasks. Tag a task to this project from Quick Capture.</Text>
+              <Text style={styles.empty}>No open tasks yet.</Text>
             ) : null}
+            <AddRow placeholder="+ Add task…" onSubmit={(text) => addTask(text, { projectId: project.id })} />
           </View>
 
           <View style={styles.section}>
