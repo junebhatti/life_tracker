@@ -30,7 +30,12 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/app/sw.js",
-        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+        headers: [
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+          // Allow the worker at /app/sw.js to claim scope "/app" (not just the
+          // default "/app/"), so it controls the /app page itself.
+          { key: "Service-Worker-Allowed", value: "/app" },
+        ],
       },
       {
         source: "/app/_expo/:path*",

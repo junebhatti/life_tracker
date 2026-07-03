@@ -77,19 +77,69 @@ function AppShell() {
   );
 }
 
+// ── self-update ────────────────────────────────────────────────────────────
+// The build this bundle was compiled from (Vercel commit SHA, stamped in at
+// build time via mobile/patch-html.js -> version.json + sw.js).
+const LOCAL_BUILD_ID = process.env.EXPO_PUBLIC_BUILD_ID;
+
+// Expose it so it's inspectable without logging in (used by the update test and
+// handy for support).
+if (typeof window !== "undefined") {
+  (window as unknown as { __BUILD_ID__?: string }).__BUILD_ID__ = LOCAL_BUILD_ID ?? "dev";
+}
+
+/** Purge caches + any service worker, then cache-bust reload into the new build. */
+async function applyUpdate() {
+  try {
+    if (typeof caches !== "undefined") {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch {
+    // best-effort — the cache-busting navigation below is the real fix
+  }
+  const base = window.location.pathname.replace(/[?#].*$/, "");
+  window.location.replace(`${base}?u=${Date.now()}`);
+}
+
 /**
- * Register the update-detection service worker (mobile/patch-html.js writes
- * dist/sw.js with the deploy's build id baked in). Runs once, before login, so
- * even a signed-out session benefits. Reopening an installed iOS PWA can resume
- * a frozen previous process instead of hitting the network at all, which is why
- * Cache-Control headers alone can't reach it — a registered service worker is
- * what the browser reliably re-checks (byte-for-byte) on load. When a new one
- * activates and takes over, reload exactly once to run the new bundle.
+ * Compare the deployed build id (version.json, served no-store) to this bundle's
+ * and reload into the new one if they differ. This is the primary mechanism —
+ * it runs in plain app JS on load and every time the tab becomes visible
+ * (reopening the installed PWA), independent of the service worker. A
+ * sessionStorage guard prevents reload loops.
+ */
+async function checkForUpdate() {
+  if (Platform.OS !== "web" || typeof window === "undefined") return;
+  if (!LOCAL_BUILD_ID || LOCAL_BUILD_ID === "local" || LOCAL_BUILD_ID === "dev") return;
+  try {
+    const res = await fetch(`/app/version.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = (await res.json()) as { buildId?: string };
+    if (!data.buildId || data.buildId === LOCAL_BUILD_ID) return;
+    const store = window.sessionStorage;
+    if (store && store.getItem("lt_updated_to") === data.buildId) return;
+    store?.setItem("lt_updated_to", data.buildId);
+    await applyUpdate();
+  } catch {
+    // offline or version.json missing — nothing to do
+  }
+}
+
+/**
+ * Register the update service worker as a secondary safety net. Served with
+ * `Service-Worker-Allowed: /app` (see next.config) and registered with scope
+ * "/app" so it actually controls the /app page (default scope "/app/" would
+ * NOT). Reloads once when a new worker takes over.
  */
 function registerServiceWorker() {
   if (Platform.OS !== "web" || typeof navigator === "undefined") return;
   if (!("serviceWorker" in navigator)) return;
-  navigator.serviceWorker.register("/app/sw.js").catch(() => {});
+  navigator.serviceWorker.register("/app/sw.js", { scope: "/app" }).catch(() => {});
   let reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (reloading) return;
@@ -98,12 +148,27 @@ function registerServiceWorker() {
   });
 }
 
+/** Wire up self-update: runs before the login gate so it works signed-out too. */
+function useAppUpdates() {
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    registerServiceWorker();
+    void checkForUpdate();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void checkForUpdate();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
+  useAppUpdates();
+
   useEffect(() => {
-    registerServiceWorker();
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setAuthReady(true);
