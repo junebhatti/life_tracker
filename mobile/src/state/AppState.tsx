@@ -44,6 +44,7 @@ function scrapHeaders(): Record<string, string> {
 }
 
 import type {
+  ActivityEntry,
   AgendaEvent,
   CaptureKind,
   ChecklistItem,
@@ -54,6 +55,7 @@ import type {
   Milestone,
   Person,
   Project,
+  ProjectType,
   Routine,
   ScrapItem,
   Task,
@@ -78,6 +80,7 @@ type ProjectRow = {
   client?: string | null; target?: string | null;
   milestones?: Milestone[];
   checklist?: ChecklistItem[];
+  activity?: ActivityEntry[];
 };
 type PersonRow = { id: string; name: string };
 type RoutineRow = {
@@ -135,10 +138,11 @@ function mapNote(row: NoteRow): LibraryNote {
 }
 
 function mapProject(row: ProjectRow): Project {
-  const group =
-    row.type === "retainer" ? "Retainers" : row.type === "area" ? "Areas" : "Active";
+  const type = (row.type === "retainer" || row.type === "area" ? row.type : "active") as ProjectType;
+  const group = type === "retainer" ? "Retainers" : type === "area" ? "Areas" : "Active";
   const milestones: Milestone[] = Array.isArray(row.milestones) ? row.milestones : [];
   const checklist: ChecklistItem[] = Array.isArray(row.checklist) ? row.checklist : [];
+  const activity: ActivityEntry[] = Array.isArray(row.activity) ? row.activity : [];
   const milestoneDone = milestones.filter((m) => m.done).length;
   const meta = [
     row.client,
@@ -148,9 +152,9 @@ function mapProject(row: ProjectRow): Project {
     .filter(Boolean)
     .join(" · ");
   return {
-    id: row.id, name: row.name, color: row.color, group, meta,
+    id: row.id, name: row.name, color: row.color, type, group, meta,
     client: row.client ?? undefined, target: row.target ?? undefined,
-    milestones, checklist,
+    milestones, checklist, activity,
   };
 }
 
@@ -216,6 +220,8 @@ type AppStateValue = {
   toggleChecklistItem: (projectId: string, itemId: string) => void;
   addMilestone: (projectId: string, title: string) => void;
   addChecklistItem: (projectId: string, title: string) => void;
+  addProject: (input: { name: string; client?: string; type: ProjectType; color: string }) => string;
+  addActivity: (projectId: string, entry: { kind: "work" | "update"; note: string; minutes?: number }) => void;
   healthExpanded: boolean;
   toggleHealthExpanded: () => void;
   categories: string[];
@@ -346,7 +352,10 @@ export function AppStateProvider({
   }
 
   async function loadAgenda() {
-    if (!API_URL) return;
+    // API_URL is empty now that the app is same-origin with the API; a relative
+    // "/api/..." path resolves against the current origin on web. Only bail on
+    // native (no origin) when no explicit API_URL is configured.
+    if (!API_URL && Platform.OS !== "web") return;
     try {
       const res = await fetch(`${API_URL}/api/calendar/agenda`);
       const json = (await res.json()) as { events?: EditableEvent[] };
@@ -364,7 +373,7 @@ export function AppStateProvider({
   }
 
   async function loadScrapbook() {
-    if (!API_URL) return;
+    if (!API_URL && Platform.OS !== "web") return;
     try {
       const res = await fetch(`${API_URL}/api/scrapbook`, { headers: scrapHeaders() });
       const json = (await res.json()) as { items?: ScrapItem[] };
@@ -384,7 +393,7 @@ export function AppStateProvider({
   }
 
   async function loadHealth() {
-    if (!API_URL) return;
+    if (!API_URL && Platform.OS !== "web") return;
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const res = await fetch(`${API_URL}/api/health/snapshot?timezone=${encodeURIComponent(tz)}`);
@@ -570,6 +579,62 @@ export function AppStateProvider({
     );
   }, [persistProjectField]);
 
+  const addProject = useCallback(
+    (input: { name: string; client?: string; type: ProjectType; color: string }) => {
+      const id = `proj_${Date.now().toString(36)}`;
+      const group = input.type === "retainer" ? "Retainers" : input.type === "area" ? "Areas" : "Active";
+      const project: Project = {
+        id, name: input.name.trim(), color: input.color, type: input.type, group,
+        meta: input.client ?? "",
+        client: input.client || undefined,
+        milestones: [], checklist: [], activity: [],
+      };
+      setProjects((prev) => [project, ...prev]);
+      void supabase
+        .from("projects")
+        .insert({
+          id, user_id: userId, name: project.name, client: input.client ?? null,
+          color: input.color, type: input.type, target: null,
+          milestones: [], checklist: [], activity: [],
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error("Failed to create project", error);
+            showToast("Couldn't create project");
+          }
+        });
+      return id;
+    },
+    [userId, showToast],
+  );
+
+  const addActivity = useCallback(
+    (projectId: string, entry: { kind: "work" | "update"; note: string; minutes?: number }) => {
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id !== projectId) return p;
+          const activity = [
+            { id: `a${Date.now()}`, kind: entry.kind, note: entry.note, minutes: entry.minutes, at: new Date().toISOString() },
+            ...p.activity,
+          ];
+          void supabase
+            .from("projects")
+            .update({ activity })
+            .eq("id", projectId)
+            .then(({ error }) => {
+              if (error) {
+                console.error("Failed to log activity", error);
+                showToast("Couldn't save — check your connection");
+                void loadProjects();
+              }
+            });
+          return { ...p, activity };
+        }),
+      );
+    },
+    [showToast],
+  );
+
   const toggleHealthExpanded = useCallback(() => setHealthExpanded((v) => !v), []);
   const openNote = useCallback((id: string | null) => setSelectedNoteId(id), []);
   const openProject = useCallback((id: string | null) => setSelectedProjectId(id), []);
@@ -679,7 +744,7 @@ export function AppStateProvider({
     () => ({
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem,
+      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, setLibFilter,
@@ -694,7 +759,7 @@ export function AppStateProvider({
     [
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem,
+      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, query,

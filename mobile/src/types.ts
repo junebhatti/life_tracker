@@ -27,17 +27,29 @@ export type ProjectGroup = "Active" | "Retainers" | "Areas";
 // the same rows.
 export type Milestone = { id: string; title: string; weight?: number; done: boolean };
 export type ChecklistItem = { id: string; title: string; recurrence?: string; done: boolean };
+export type ActivityEntry = {
+  id: string;
+  kind: "work" | "update";
+  note: string;
+  minutes?: number;
+  at: string;
+};
+
+export type ProjectType = "active" | "retainer" | "area";
 
 export type Project = {
   id: string;
   name: string;
   color: string;
+  /** Raw type from the DB, kept so the detail/edit views can round-trip it. */
+  type: ProjectType;
   group: ProjectGroup;
   meta: string;
   client?: string;
   target?: string;
   milestones: Milestone[];
   checklist: ChecklistItem[];
+  activity: ActivityEntry[];
 };
 
 export type Person = {
