@@ -183,6 +183,7 @@ type AppStateValue = {
   refreshAll: () => Promise<void>;
   toggleTaskDone: (id: string) => void;
   toggleTaskStar: (id: string) => void;
+  addTask: (title: string, opts?: { starred?: boolean }) => void;
   toggleRoutine: (id: string) => void;
   toggleMilestone: (projectId: string, milestoneId: string) => void;
   toggleChecklistItem: (projectId: string, itemId: string) => void;
@@ -396,6 +397,19 @@ export function AppStateProvider({
       // offline or not configured — leave null
     }
   }
+
+  // Create a task directly (used by the Today page's inline "add a top task"
+  // slot). starred=true makes it show in Top 3.
+  const addTask = useCallback((title: string, opts?: { starred?: boolean }) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const id = `t${Date.now()}`;
+    const starred = opts?.starred ?? false;
+    setTasks((prev) => [{ id, title: trimmed, done: false, starred }, ...prev]);
+    void supabase.from("tasks").insert({
+      id, title: trimmed, status: "open", starred, user_id: userId,
+    });
+  }, [userId]);
 
   // Re-pull everything without clearing the screen (used by the manual Sync
   // button and by the foreground refetch below).
@@ -710,7 +724,7 @@ export function AppStateProvider({
     () => ({
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
+      toggleTaskDone, toggleTaskStar, addTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, setLibFilter,
@@ -725,7 +739,7 @@ export function AppStateProvider({
     [
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
+      toggleTaskDone, toggleTaskStar, addTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, query,

@@ -1,5 +1,5 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import PageHeader from "../components/PageHeader";
@@ -16,13 +16,54 @@ function timezoneLabel(): string {
   return tz.split("/").pop()?.replace(/_/g, " ") ?? tz;
 }
 
+// Opens the Google Calendar app if installed, else its web page. No API needed.
+function openGoogleCalendar() {
+  Linking.openURL("comgooglecalendar://").catch(() => {
+    Linking.openURL("https://calendar.google.com/calendar/u/0/r").catch(() => {});
+  });
+}
+
+/** The single "add a top task" slot at the end of the Top 3 list. */
+function TopTaskAdder() {
+  const { addTask } = useAppState();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+
+  function submit() {
+    const trimmed = text.trim();
+    if (trimmed) addTask(trimmed, { starred: true });
+    setText("");
+    setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <Pressable style={styles.openSpotRow} onPress={() => setEditing(true)}>
+        <Text style={styles.openSpotText}>+ add a top task</Text>
+      </Pressable>
+    );
+  }
+  return (
+    <View style={styles.openSpotRow}>
+      <TextInput
+        style={styles.topInput}
+        value={text}
+        onChangeText={setText}
+        placeholder="What matters most today?"
+        placeholderTextColor={colors.textTertiary}
+        onSubmitEditing={submit}
+        onBlur={submit}
+        autoFocus
+        returnKeyType="done"
+      />
+    </View>
+  );
+}
+
 export default function TodayScreen() {
   const { tasks, agenda, routines, toggleRoutine } = useAppState();
   const starred = tasks.filter((t) => t.starred && !t.done).slice(0, 3);
   const openTasks = tasks.filter((t) => !t.done);
-  const openSpots = Math.max(0, 3 - starred.length);
-
-  const todayAgenda = agenda.filter((e) => e.day === "Today" || e.day === "Tomorrow");
 
   return (
     <View>
@@ -32,32 +73,32 @@ export default function TodayScreen() {
       {starred.map((t) => (
         <TaskRow key={t.id} task={t} />
       ))}
-      {Array.from({ length: openSpots }).map((_, i) => (
-        <View key={`spot-${i}`} style={styles.openSpotRow}>
-          <Text style={styles.openSpotText}>(open spot)</Text>
-        </View>
-      ))}
-      <Text style={styles.hint}>Star a task below to set it as today&apos;s top 3.</Text>
+      {/* One optional slot — no pressure to fill all three. */}
+      {starred.length < 3 ? <TopTaskAdder /> : null}
 
-      {todayAgenda.length > 0 ? (
-        <>
-          <View style={styles.upNextHeader}>
-            <Text style={styles.sectionLabelNoMargin}>Up Next</Text>
-          </View>
-          {todayAgenda.map((e) => (
-            <View key={e.id} style={styles.eventRow}>
-              <View style={styles.eventTimeCol}>
-                {e.day ? <Text style={styles.eventMeta}>{e.day}</Text> : null}
-                <Text style={styles.eventMeta}>{e.time}</Text>
-              </View>
-              <View style={styles.eventBody}>
-                <Text style={styles.eventTitle}>{e.title}</Text>
-                {e.location ? <Text style={styles.eventLocation}>{e.location}</Text> : null}
-              </View>
+      {/* Calendar — upcoming items, with a jump to the Google Calendar app. */}
+      <View style={styles.calHeader}>
+        <Text style={styles.sectionLabelNoMargin}>Calendar</Text>
+        <Pressable onPress={openGoogleCalendar} hitSlop={8}>
+          <Text style={styles.calOpen}>Open Google Calendar ↗</Text>
+        </Pressable>
+      </View>
+      {agenda.length > 0 ? (
+        agenda.map((e) => (
+          <View key={e.id} style={styles.eventRow}>
+            <View style={styles.eventTimeCol}>
+              {e.day ? <Text style={styles.eventMeta}>{e.day}</Text> : null}
+              <Text style={styles.eventMeta}>{e.time}</Text>
             </View>
-          ))}
-        </>
-      ) : null}
+            <View style={styles.eventBody}>
+              <Text style={styles.eventTitle}>{e.title}</Text>
+              {e.location ? <Text style={styles.eventLocation}>{e.location}</Text> : null}
+            </View>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.calEmpty}>Nothing scheduled in the next few days.</Text>
+      )}
 
       <HealthWidget />
 
@@ -124,18 +165,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textTertiary,
   },
-  hint: {
+  topInput: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    color: colors.textTertiary,
-    marginTop: 8,
+    fontSize: 15,
+    color: colors.textPrimary,
+    paddingVertical: 0,
   },
-  upNextHeader: {
+  calHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 30,
-    marginBottom: 6,
+    marginBottom: 8,
+  },
+  calOpen: {
+    fontFamily: fonts.monoMedium,
+    fontSize: 10,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: colors.accentRed,
+  },
+  calEmpty: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.textTertiary,
+    fontStyle: "italic",
+    paddingVertical: 6,
   },
   eventRow: {
     flexDirection: "row",

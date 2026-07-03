@@ -277,6 +277,23 @@ function parseSleepStages(sleep: Record<string, unknown>): SleepStages | undefin
   return Object.keys(stages).length > 0 ? stages : undefined;
 }
 
+/**
+ * Guards against a garbled breakdown (e.g. "Light 13.1h") — when a data source
+ * double-counts stages or reports odd units, the asleep stages (deep + REM +
+ * light) can wildly exceed the actual time asleep. If they exceed it by more
+ * than ~30%, the breakdown is inconsistent with the total, so drop it rather
+ * than show impossible numbers; the widget then just shows total hours.
+ */
+function sanitizeStages(
+  stages: SleepStages | undefined,
+  totalAsleepMinutes: number | undefined,
+): SleepStages | undefined {
+  if (!stages || !totalAsleepMinutes || totalAsleepMinutes <= 0) return stages;
+  const asleep = (stages.deepMinutes ?? 0) + (stages.remMinutes ?? 0) + (stages.lightMinutes ?? 0);
+  if (asleep > totalAsleepMinutes * 1.3) return undefined;
+  return stages;
+}
+
 async function fetchRecentSleep(
   accessToken: string,
   timeZone: string,
@@ -343,7 +360,7 @@ async function fetchRecentSleep(
     minutesAwake: summary ? findNestedNumber(summary, ["minutesAwake"]) : undefined,
     minutesToFallAsleep: summary ? findNestedNumber(summary, ["minutesToFallAsleep"]) : undefined,
     efficiency: summary ? findNestedNumber(summary, ["efficiency"]) : undefined,
-    stages: parseSleepStages(sleep),
+    stages: sanitizeStages(parseSleepStages(sleep), longest.minutes),
   };
 }
 
