@@ -20,16 +20,30 @@ function clamp(v: number, lo: number, hi: number) {
 // ── Item renderers ─────────────────────────────────────────────────────────
 
 function ScrapImage({ item }: { item: ScrapItemRow & { type: "img" } }) {
+  // Clean "sticker" cutout: the image fills the whole box (object-cover, so no
+  // letterbox bars), clipped to soft rounded corners with a gentle drop shadow
+  // to lift it off the canvas — no matte/frame around it.
   return (
     <div
-      style={{ width: item.w, height: item.h ?? item.w }}
-      className="flex items-center justify-center rounded-lg bg-[#ede8e2] p-2"
+      style={{
+        width: item.w,
+        height: item.h ?? item.w,
+        boxShadow: "0 6px 18px rgba(0,0,0,0.20)",
+      }}
+      className="overflow-hidden rounded-2xl"
     >
       {item.url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.url} alt={item.label ?? ""} className="h-full w-full rounded-md object-cover" />
+        <img
+          src={item.url}
+          alt={item.label ?? ""}
+          className="block h-full w-full object-cover"
+          draggable={false}
+        />
       ) : (
-        <span className="text-center font-mono text-[10px] text-neutral-500">{item.label}</span>
+        <div className="flex h-full w-full items-center justify-center bg-[#ede8e2]">
+          <span className="px-2 text-center font-mono text-[10px] text-neutral-500">{item.label}</span>
+        </div>
       )}
     </div>
   );
@@ -420,11 +434,28 @@ export default function ScrapbookPage() {
     [drag, items],
   );
 
+  // Zoom toward a point (in viewport coords) keeping that point stationary, so
+  // the canvas grows/shrinks under the cursor instead of jumping to a corner.
+  const zoomAt = useCallback((factor: number, px: number, py: number) => {
+    setScale((prevScale) => {
+      const next = clamp(prevScale * factor, MIN_SCALE, MAX_SCALE);
+      if (next === prevScale) return prevScale;
+      const ratio = next / prevScale;
+      setTx((prevTx) => px - (px - prevTx) * ratio);
+      setTy((prevTy) => py - (py - prevTy) * ratio);
+      return next;
+    });
+  }, []);
+
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    const delta = e.deltaY < 0 ? 1.1 : 0.9;
-    setScale((s) => clamp(s * delta, MIN_SCALE, MAX_SCALE));
-  }, []);
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // Exponential factor => smooth, velocity-sensitive zoom (trackpad pinch and
+    // wheel both feel natural); anchored at the cursor.
+    const factor = Math.exp(-e.deltaY * 0.0018);
+    zoomAt(factor, e.clientX - rect.left, e.clientY - rect.top);
+  }, [zoomAt]);
 
   // ── CRUD helpers ───────────────────────────────────────────────────────
 
@@ -464,7 +495,11 @@ export default function ScrapbookPage() {
     await fetch(`/api/scrapbook/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(console.error);
   }, []);
 
-  const zoomBy = (factor: number) => setScale((s) => clamp(s * factor, MIN_SCALE, MAX_SCALE));
+  // +/- buttons zoom toward the centre of the viewport.
+  const zoomBy = (factor: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    zoomAt(factor, rect ? rect.width / 2 : 0, rect ? rect.height / 2 : 0);
+  };
   const fitView = () => { setScale(0.85); setTx(0); setTy(0); };
 
   const isDraggingItem = drag?.kind === "item";
