@@ -81,7 +81,7 @@ type ScrapItemBase = {
   rot?: number;
 };
 
-export type ScrapImageItem = ScrapItemBase & { type: "img"; label: string };
+export type ScrapImageItem = ScrapItemBase & { type: "img"; label: string; url?: string };
 export type ScrapQuoteItem = ScrapItemBase & { type: "quote"; text: string; source: string };
 export type ScrapNoteItem = ScrapItemBase & { type: "note"; text: string };
 export type ScrapItem = ScrapImageItem | ScrapQuoteItem | ScrapNoteItem;

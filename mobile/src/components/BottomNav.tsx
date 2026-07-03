@@ -3,9 +3,9 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { colors, fonts } from "../theme";
 
-export type TabKey = "Today" | "Tasks" | "Projects" | "Library" | "Scrapbook" | "Search";
+export type TabKey = "Today" | "Tasks" | "Projects" | "Library" | "Scrapbook" | "Urdu" | "Search";
 
-const TABS: TabKey[] = ["Today", "Tasks", "Projects", "Library", "Scrapbook", "Search"];
+const TABS: TabKey[] = ["Today", "Tasks", "Projects", "Library", "Scrapbook", "Urdu", "Search"];
 
 export default function BottomNav({
   active,
@@ -46,10 +46,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 4,
+    gap: 2,
     paddingTop: 14,
     paddingBottom: 26,
-    paddingHorizontal: 18,
+    paddingHorizontal: 10,
   },
   item: {
     flex: 1,

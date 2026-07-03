@@ -28,6 +28,10 @@ import {
   JetBrainsMono_400Regular,
   JetBrainsMono_700Bold,
 } from "@expo-google-fonts/jetbrains-mono";
+import {
+  useFonts as useNotoNastaliqFonts,
+  NotoNastaliqUrdu_400Regular,
+} from "@expo-google-fonts/noto-nastaliq-urdu";
 
 import { supabase } from "./src/lib/supabase";
 import { colors } from "./src/theme";
@@ -43,6 +47,7 @@ import ProjectsScreen from "./src/screens/ProjectsScreen";
 import LibraryScreen from "./src/screens/LibraryScreen";
 import ScrapbookScreen from "./src/screens/ScrapbookScreen";
 import SearchScreen from "./src/screens/SearchScreen";
+import FlashcardsScreen from "./src/screens/FlashcardsScreen";
 
 function AppShell() {
   const [tab, setTab] = useState<TabKey>("Today");
@@ -64,6 +69,7 @@ function AppShell() {
           {tab === "Tasks" ? <TasksScreen /> : null}
           {tab === "Projects" ? <ProjectsScreen /> : null}
           {tab === "Library" ? <LibraryScreen /> : null}
+          {tab === "Urdu" ? <FlashcardsScreen /> : null}
           {tab === "Search" ? <SearchScreen /> : null}
         </ScrollView>
       )}
@@ -151,11 +157,20 @@ function useAppUpdates() {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     registerServiceWorker();
     void checkForUpdate();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void checkForUpdate();
+    // iOS home-screen PWAs don't reliably fire a single event on reopen, so
+    // listen to several — whichever fires when the app comes back to the fore
+    // triggers the version check.
+    const onWake = () => {
+      if (document.visibilityState !== "hidden") void checkForUpdate();
     };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("pageshow", onWake);
+    window.addEventListener("focus", onWake);
+    return () => {
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("pageshow", onWake);
+      window.removeEventListener("focus", onWake);
+    };
   }, []);
 }
 
@@ -184,6 +199,7 @@ export default function App() {
   useGeistFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold });
   useGeistMonoFonts({ GeistMono_400Regular, GeistMono_500Medium, GeistMono_600SemiBold, GeistMono_700Bold });
   useJetBrainsMonoFonts({ JetBrainsMono_400Regular, JetBrainsMono_700Bold });
+  useNotoNastaliqFonts({ NotoNastaliqUrdu_400Regular });
 
   if (!authReady) {
     return <View style={styles.app} />;

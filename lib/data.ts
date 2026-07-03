@@ -17,6 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Budget", href: "/budget" },
   { label: "Calendar", href: "/calendar" },
   { label: "Scrapbook", href: "/scrapbook" },
+  { label: "Flashcards", href: "/flashcards" },
   { label: "Map", href: "/map" },
 ];
 

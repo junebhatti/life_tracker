@@ -1,10 +1,20 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import type { ScrapItem } from "../types";
 
 function ScrapImage({ item }: { item: Extract<ScrapItem, { type: "img" }> }) {
+  // Clean sticker-cutout: the photo fills its box (cover, no letterbox), rounded
+  // with a soft shadow. Falls back to the label chip if there's no URL.
+  if (item.url) {
+    const aspect = item.h && item.w ? item.w / item.h : 1;
+    return (
+      <View style={styles.imgWrap}>
+        <Image source={{ uri: item.url }} style={[styles.img, { aspectRatio: aspect }]} resizeMode="cover" />
+      </View>
+    );
+  }
   return (
     <View style={styles.imgBox}>
       <Text style={styles.imgLabel}>{item.label}</Text>
@@ -93,6 +103,19 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     width: "47%",
+  },
+  imgWrap: {
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: colors.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  img: {
+    width: "100%",
   },
   imgBox: {
     backgroundColor: "#ede8e2",
