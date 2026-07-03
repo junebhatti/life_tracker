@@ -214,6 +214,8 @@ type AppStateValue = {
   toggleRoutine: (id: string) => void;
   toggleMilestone: (projectId: string, milestoneId: string) => void;
   toggleChecklistItem: (projectId: string, itemId: string) => void;
+  addMilestone: (projectId: string, title: string) => void;
+  addChecklistItem: (projectId: string, title: string) => void;
   healthExpanded: boolean;
   toggleHealthExpanded: () => void;
   categories: string[];
@@ -546,6 +548,28 @@ export function AppStateProvider({
     );
   }, [persistProjectField]);
 
+  const addMilestone = useCallback((projectId: string, title: string) => {
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        const milestones = [...p.milestones, { id: `m${Date.now()}`, title, weight: 10, done: false }];
+        persistProjectField(projectId, "milestones", milestones);
+        return { ...p, milestones };
+      }),
+    );
+  }, [persistProjectField]);
+
+  const addChecklistItem = useCallback((projectId: string, title: string) => {
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        const checklist = [...p.checklist, { id: `c${Date.now()}`, title, recurrence: "one-shot", done: false }];
+        persistProjectField(projectId, "checklist", checklist);
+        return { ...p, checklist };
+      }),
+    );
+  }, [persistProjectField]);
+
   const toggleHealthExpanded = useCallback(() => setHealthExpanded((v) => !v), []);
   const openNote = useCallback((id: string | null) => setSelectedNoteId(id), []);
   const openProject = useCallback((id: string | null) => setSelectedProjectId(id), []);
@@ -655,7 +679,7 @@ export function AppStateProvider({
     () => ({
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem,
+      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, setLibFilter,
@@ -670,7 +694,7 @@ export function AppStateProvider({
     [
       tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem,
+      toggleTaskDone, toggleTaskStar, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, query,

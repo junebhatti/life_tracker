@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
@@ -27,8 +27,34 @@ function CheckIcon({ done }: { done: boolean }) {
   );
 }
 
+function AddRow({ placeholder, onSubmit }: { placeholder: string; onSubmit: (text: string) => void }) {
+  const [text, setText] = useState("");
+  function submit() {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    onSubmit(trimmed);
+    setText("");
+  }
+  return (
+    <View style={styles.addRow}>
+      <TextInput
+        style={styles.addInput}
+        value={text}
+        onChangeText={setText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textTertiary}
+        onSubmitEditing={submit}
+        returnKeyType="done"
+      />
+      <Pressable style={styles.addBtn} onPress={submit} hitSlop={8}>
+        <Text style={styles.addBtnText}>Add</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function ProjectDetail({ project, onClose }: { project: Project; onClose: () => void }) {
-  const { toggleMilestone, toggleChecklistItem } = useAppState();
+  const { toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem } = useAppState();
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.sheetWrap}>
@@ -46,33 +72,39 @@ function ProjectDetail({ project, onClose }: { project: Project; onClose: () => 
         ) : null}
 
         <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
-          {project.milestones.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Milestones</Text>
-              {project.milestones.map((m) => (
-                <Pressable key={m.id} style={styles.itemRow} onPress={() => toggleMilestone(project.id, m.id)}>
-                  <CheckIcon done={m.done} />
-                  <Text style={[styles.itemText, m.done && styles.itemDone]}>{m.title}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>{`Milestones${project.milestones.length ? ` · ${project.milestones.length}` : ""}`}</Text>
+            {project.milestones.map((m) => (
+              <Pressable key={m.id} style={styles.itemRow} onPress={() => toggleMilestone(project.id, m.id)}>
+                <CheckIcon done={m.done} />
+                <Text style={[styles.itemText, m.done && styles.itemDone]}>{m.title}</Text>
+              </Pressable>
+            ))}
+            {project.milestones.length === 0 ? (
+              <Text style={styles.empty}>No milestones yet.</Text>
+            ) : null}
+            <AddRow
+              placeholder="+ Add milestone…"
+              onSubmit={(text) => addMilestone(project.id, text)}
+            />
+          </View>
 
-          {project.checklist.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Checklist</Text>
-              {project.checklist.map((c) => (
-                <Pressable key={c.id} style={styles.itemRow} onPress={() => toggleChecklistItem(project.id, c.id)}>
-                  <CheckIcon done={c.done} />
-                  <Text style={[styles.itemText, c.done && styles.itemDone]}>{c.title}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          {project.milestones.length === 0 && project.checklist.length === 0 ? (
-            <Text style={styles.empty}>No milestones or checklist items yet.</Text>
-          ) : null}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>{`Checklist${project.checklist.length ? ` · ${project.checklist.length}` : ""}`}</Text>
+            {project.checklist.map((c) => (
+              <Pressable key={c.id} style={styles.itemRow} onPress={() => toggleChecklistItem(project.id, c.id)}>
+                <CheckIcon done={c.done} />
+                <Text style={[styles.itemText, c.done && styles.itemDone]}>{c.title}</Text>
+              </Pressable>
+            ))}
+            {project.checklist.length === 0 ? (
+              <Text style={styles.empty}>No checklist items yet.</Text>
+            ) : null}
+            <AddRow
+              placeholder="+ Add checklist item…"
+              onSubmit={(text) => addChecklistItem(project.id, text)}
+            />
+          </View>
         </ScrollView>
       </View>
     </Modal>
@@ -247,7 +279,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textFaint,
     fontStyle: "italic",
-    marginTop: 32,
-    textAlign: "center",
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  addRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+  },
+  addInput: {
+    flex: 1,
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    color: colors.textPrimary,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  addBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceDark,
+  },
+  addBtnText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 12.5,
+    color: "#fff",
   },
 });
