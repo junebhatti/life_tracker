@@ -17,6 +17,7 @@ import type {
   CaptureKind,
   ChecklistItem,
   HealthData,
+  HealthHistoryDay,
   LibraryCategory,
   LibraryFilter,
   LibraryNote,
@@ -178,6 +179,7 @@ type AppStateValue = {
   scrapItems: ScrapItem[];
   routines: Routine[];
   health: HealthData | null;
+  healthHistory: HealthHistoryDay[];
   loading: boolean;
   refreshing: boolean;
   refreshAll: () => Promise<void>;
@@ -247,6 +249,7 @@ export function AppStateProvider({
   const [scrapItems, setScrapItems] = useState<ScrapItem[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [health, setHealth] = useState<HealthData | null>(null);
+  const [healthHistory, setHealthHistory] = useState<HealthHistoryDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -279,6 +282,7 @@ export function AppStateProvider({
       loadScrapbook(),
       loadRoutines(),
       loadHealth(),
+      loadHealthHistory(),
     ]);
     setLoading(false);
   }
@@ -369,7 +373,11 @@ export function AppStateProvider({
       const json = (await res.json()) as {
         configured?: boolean;
         snapshot?: {
-          sleep?: { hours: number; start?: string; end?: string; stages?: { deepMinutes?: number; lightMinutes?: number; remMinutes?: number; awakeMinutes?: number } };
+          sleep?: {
+            hours: number; start?: string; end?: string;
+            efficiency?: number; minutesToFallAsleep?: number; minutesAwake?: number;
+            stages?: { deepMinutes?: number; lightMinutes?: number; remMinutes?: number; awakeMinutes?: number };
+          };
           restingHeartRate?: number;
           steps?: number;
           nutrition?: { calories?: number; proteinGrams?: number; carbsGrams?: number; fatGrams?: number };
@@ -381,6 +389,9 @@ export function AppStateProvider({
           sleepHours: s.sleep?.hours,
           sleepStart: s.sleep?.start,
           sleepEnd: s.sleep?.end,
+          efficiency: s.sleep?.efficiency,
+          minutesToFallAsleep: s.sleep?.minutesToFallAsleep,
+          minutesAwake: s.sleep?.minutesAwake,
           deepMinutes: s.sleep?.stages?.deepMinutes,
           lightMinutes: s.sleep?.stages?.lightMinutes,
           remMinutes: s.sleep?.stages?.remMinutes,
@@ -395,6 +406,22 @@ export function AppStateProvider({
       }
     } catch {
       // offline or not configured — leave null
+    }
+  }
+
+  async function loadHealthHistory() {
+    if (!API_URL && Platform.OS !== "web") return;
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      const res = await fetch(`${API_URL}/api/health/history`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as { days?: HealthHistoryDay[] };
+      if (Array.isArray(json.days)) setHealthHistory(json.days);
+    } catch {
+      // offline or unauthorized — leave empty
     }
   }
 
@@ -424,6 +451,7 @@ export function AppStateProvider({
       loadScrapbook(),
       loadRoutines(),
       loadHealth(),
+      loadHealthHistory(),
     ]);
     setRefreshing(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -722,7 +750,7 @@ export function AppStateProvider({
 
   const value = useMemo<AppStateValue>(
     () => ({
-      tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, loading,
       refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, addTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
@@ -737,7 +765,7 @@ export function AppStateProvider({
       signOut,
     }),
     [
-      tasks, notes, projects, people, agenda, scrapItems, routines, health, loading,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, loading,
       refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, addTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,

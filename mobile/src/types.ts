@@ -108,10 +108,22 @@ export type HealthData = {
   lightMinutes?: number;
   remMinutes?: number;
   awakeMinutes?: number;
+  // Sleep depth detail
+  efficiency?: number;
+  minutesToFallAsleep?: number;
+  minutesAwake?: number;
   restingHR?: number;
   steps?: number;
   calories?: number;
   protein?: number;
   carbs?: number;
   fat?: number;
+};
+
+/** One day of history from /api/health/history, for the trend graphs. */
+export type HealthHistoryDay = {
+  date: string;
+  sleepHours: number | null;
+  restingHeartRate: number | null;
+  steps: number | null;
 };

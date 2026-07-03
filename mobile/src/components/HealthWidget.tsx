@@ -1,7 +1,10 @@
 import React, { useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import Svg, { Line, Rect } from "react-native-svg";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
+import { generateHealthInsights } from "../lib/healthInsights";
+import type { HealthHistoryDay } from "../types";
 
 function fmt1(n: number | undefined): string {
   return n !== undefined ? n.toFixed(1) : "—";
@@ -31,10 +34,79 @@ function MacroRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function DepthStat({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.depthStat}>
+      <Text style={styles.depthValue}>{value}</Text>
+      <Text style={styles.depthLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// ── trend bar chart ───────────────────────────────────────────────────────────
+
+function TrendBars({
+  values,
+  goal,
+  color,
+  unitLabel,
+}: {
+  values: (number | null)[];
+  goal?: number;
+  color: string;
+  unitLabel: string;
+}) {
+  const width = Dimensions.get("window").width - 40; // screen padding 20 each side
+  const height = 92;
+  const nums = values.filter((v): v is number => v != null);
+  if (nums.length < 2) {
+    return <Text style={styles.noData}>Not enough history yet.</Text>;
+  }
+  const max = Math.max(...nums, goal ?? 0) * 1.1;
+  const n = values.length;
+  const slot = width / n;
+  const barW = Math.max(3, slot * 0.55);
+  const y = (v: number) => height - (v / max) * height;
+
+  return (
+    <View>
+      <Svg width={width} height={height}>
+        {goal !== undefined ? (
+          <Line x1={0} y1={y(goal)} x2={width} y2={y(goal)} stroke={colors.border} strokeWidth={1} strokeDasharray="3 4" />
+        ) : null}
+        {values.map((v, i) => {
+          if (v == null) return null;
+          const barH = Math.max(2, (v / max) * height);
+          const x = i * slot + (slot - barW) / 2;
+          const recent = i >= n - 3;
+          return (
+            <Rect
+              key={i}
+              x={x}
+              y={height - barH}
+              width={barW}
+              height={barH}
+              rx={Math.min(3, barW / 2)}
+              fill={recent ? color : colors.border}
+            />
+          );
+        })}
+      </Svg>
+      <View style={styles.trendAxis}>
+        <Text style={styles.trendAxisText}>{`${nums.length}d`}</Text>
+        <Text style={styles.trendAxisText}>
+          avg {(nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(unitLabel === "h" ? 1 : 0)}{unitLabel}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 // ── full-screen detail page ───────────────────────────────────────────────────
 
 function HealthDetail({ onClose }: { onClose: () => void }) {
-  const { health } = useAppState();
+  const { health, healthHistory } = useAppState();
+  const insights = generateHealthInsights(health, healthHistory);
 
   const deep = health?.deepMinutes;
   const rem = health?.remMinutes;
@@ -51,11 +123,16 @@ function HealthDetail({ onClose }: { onClose: () => void }) {
       : null;
   const stageTotal = stages ? stages.reduce((s, x) => s + x.min, 0) : 0;
 
+  const recent = (sel: (d: HealthHistoryDay) => number | null) => healthHistory.slice(-14).map(sel);
+
   function sleepWindow(): string {
     if (!health?.sleepStart || !health?.sleepEnd) return "";
     const f = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
     return `${f(health.sleepStart)} – ${f(health.sleepEnd)}`;
   }
+
+  const hasDepth =
+    health?.efficiency != null || health?.minutesToFallAsleep != null || health?.minutesAwake != null;
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -69,6 +146,7 @@ function HealthDetail({ onClose }: { onClose: () => void }) {
         </View>
 
         <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
+          {/* headline stats */}
           <View style={styles.statGrid}>
             <View style={styles.statBox}>
               <Text style={styles.statValue}>{fmt1(health?.sleepHours)}</Text>
@@ -84,7 +162,19 @@ function HealthDetail({ onClose }: { onClose: () => void }) {
             </View>
           </View>
 
-          <Text style={styles.subheader}>{`Sleep · Last Night${sleepWindow() ? ` · ${sleepWindow()}` : ""}`}</Text>
+          {/* insights */}
+          <Text style={styles.subheader}>Insights</Text>
+          <View style={styles.insightCard}>
+            {insights.map((line, i) => (
+              <View key={i} style={styles.insightRow}>
+                <View style={styles.insightDot} />
+                <Text style={styles.insightText}>{line}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* sleep last night */}
+          <Text style={[styles.subheader, { marginTop: 26 }]}>{`Sleep · Last Night${sleepWindow() ? ` · ${sleepWindow()}` : ""}`}</Text>
           {stages && stageTotal > 0 ? (
             <>
               <View style={styles.sleepBar}>
@@ -111,7 +201,27 @@ function HealthDetail({ onClose }: { onClose: () => void }) {
             </Text>
           )}
 
-          <Text style={[styles.subheader, { marginTop: 26 }]}>Nutrition · Today</Text>
+          {/* sleep depth */}
+          {hasDepth ? (
+            <View style={styles.depthRow}>
+              <DepthStat label="Efficiency" value={health?.efficiency != null ? `${Math.round(health.efficiency)}%` : "—"} />
+              <DepthStat label="Fell asleep in" value={health?.minutesToFallAsleep != null ? `${Math.round(health.minutesToFallAsleep)}m` : "—"} />
+              <DepthStat label="Awake" value={health?.minutesAwake != null ? `${Math.round(health.minutesAwake)}m` : "—"} />
+            </View>
+          ) : null}
+
+          {/* trends */}
+          <Text style={[styles.subheader, { marginTop: 28 }]}>Sleep · Last 2 Weeks</Text>
+          <TrendBars values={recent((d) => d.sleepHours)} goal={8} color="#7c3aed" unitLabel="h" />
+
+          <Text style={[styles.subheader, { marginTop: 24 }]}>Steps · Last 2 Weeks</Text>
+          <TrendBars values={recent((d) => d.steps)} color="#0d9488" unitLabel="" />
+
+          <Text style={[styles.subheader, { marginTop: 24 }]}>Resting HR · Last 2 Weeks</Text>
+          <TrendBars values={recent((d) => d.restingHeartRate)} color="#b91c1c" unitLabel="" />
+
+          {/* nutrition */}
+          <Text style={[styles.subheader, { marginTop: 28 }]}>Nutrition · Today</Text>
           <View style={styles.nutritionRow}>
             <View style={styles.ring}>
               <Text style={styles.ringValue}>{fmtInt(health?.calories)}</Text>
@@ -190,8 +300,14 @@ const styles = StyleSheet.create({
   statBox: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 16, alignItems: "center" },
   statValue: { fontFamily: fonts.serif, fontSize: 26, color: colors.textPrimary },
   statUnit: { fontFamily: fonts.mono, fontSize: 8.5, textTransform: "uppercase", letterSpacing: 0.6, color: colors.textTertiary, marginTop: 4 },
-  subheader: { fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 0.7, color: colors.textTertiary, marginBottom: 10 },
+  subheader: { fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 0.7, textTransform: "uppercase", color: colors.textTertiary, marginBottom: 10 },
   noData: { fontFamily: fonts.sans, fontSize: 13, color: colors.textFaint, fontStyle: "italic" },
+  // insights
+  insightCard: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10 },
+  insightRow: { flexDirection: "row", gap: 9, alignItems: "flex-start" },
+  insightDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#7c3aed", marginTop: 6 },
+  insightText: { flex: 1, fontFamily: fonts.sans, fontSize: 13.5, lineHeight: 19, color: colors.textPrimary },
+  // sleep stages
   sleepBar: { height: 8, borderRadius: 4, flexDirection: "row", gap: 1, overflow: "hidden" },
   stageRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 14 },
   stageItem: { flex: 1 },
@@ -200,6 +316,15 @@ const styles = StyleSheet.create({
   stageLabel: { fontFamily: fonts.mono, fontSize: 9.5, color: colors.textSecondary },
   stageHours: { fontFamily: fonts.serif, fontSize: 18, color: colors.textPrimary, marginTop: 4 },
   stagePct: { fontFamily: fonts.mono, fontSize: 9.5, color: colors.textFaint },
+  // depth
+  depthRow: { flexDirection: "row", gap: 12, marginTop: 18 },
+  depthStat: { flex: 1, alignItems: "center", paddingVertical: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10 },
+  depthValue: { fontFamily: fonts.serif, fontSize: 20, color: colors.textPrimary },
+  depthLabel: { fontFamily: fonts.mono, fontSize: 8, textTransform: "uppercase", letterSpacing: 0.5, color: colors.textTertiary, marginTop: 3 },
+  // trends
+  trendAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
+  trendAxisText: { fontFamily: fonts.mono, fontSize: 9, color: colors.textFaint, textTransform: "uppercase", letterSpacing: 0.5 },
+  // nutrition
   nutritionRow: { flexDirection: "row", alignItems: "center", gap: 18 },
   ring: { width: 76, height: 76, borderRadius: 38, borderWidth: 6, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   ringValue: { fontFamily: fonts.serif, fontSize: 20, color: colors.textPrimary },

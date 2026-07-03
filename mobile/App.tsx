@@ -134,18 +134,15 @@ async function checkForUpdate() {
  * Register the update service worker as a secondary safety net. Served with
  * `Service-Worker-Allowed: /app` (see next.config) and registered with scope
  * "/app" so it actually controls the /app page (default scope "/app/" would
- * NOT). Reloads once when a new worker takes over.
+ * NOT). Its only job is forcing navigations to hit the network (fresh shell),
+ * so even if the browser ignores no-store the app can't get stuck on a stale
+ * page. Reloads are driven by checkForUpdate (version.json), not by the worker,
+ * to avoid a spurious reload when it first claims an uncontrolled page.
  */
 function registerServiceWorker() {
   if (Platform.OS !== "web" || typeof navigator === "undefined") return;
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.register("/app/sw.js", { scope: "/app" }).catch(() => {});
-  let reloading = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloading) return;
-    reloading = true;
-    window.location.reload();
-  });
 }
 
 /** Wire up self-update: runs before the login gate so it works signed-out too. */
