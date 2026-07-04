@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import { useAuth } from "@/components/AuthProvider";
 import type { ScrapItemRow } from "@/app/api/scrapbook/route";
 
 type DragState =
@@ -327,6 +328,16 @@ function EditItemModal({
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function ScrapbookPage() {
+  const { session } = useAuth();
+  const token = session?.access_token;
+  const authHeaders = useCallback(
+    (extra?: Record<string, string>): Record<string, string> => ({
+      ...extra,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }),
+    [token],
+  );
+
   const [items, setItems] = useState<ScrapItemRow[]>([]);
   const [configured, setConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -343,15 +354,17 @@ export default function ScrapbookPage() {
 
   // ── Load items ─────────────────────────────────────────────────────────
 
-  const reload = useCallback(() => {
-    setLoading(true);
-    fetch("/api/scrapbook")
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/scrapbook", { headers: authHeaders() })
       .then((r) => r.json())
       .then((d: { items?: ScrapItemRow[]; configured?: boolean }) => {
+        if (cancelled) return;
         setItems(d.items ?? []);
         setConfigured(d.configured ?? true);
       })
       .catch(() => {
+        if (cancelled) return;
         // Surface the seed-like fallback when Supabase isn't set up yet.
         setItems([
           { id: "s1", type: "img", x: 28, y: 28, w: 184, h: 138, label: "Add your first image →" },
@@ -359,10 +372,13 @@ export default function ScrapbookPage() {
           { id: "s3", type: "note", x: 280, y: 40, w: 180, text: "Set up Supabase to save items permanently." },
         ]);
       })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { reload(); }, [reload]);
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders]);
 
   // ── Mouse events for pan + item drag ───────────────────────────────────
 
@@ -424,14 +440,14 @@ export default function ScrapbookPage() {
         if (item) {
           fetch(`/api/scrapbook/${encodeURIComponent(item.id)}`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" },
+            headers: authHeaders({ "Content-Type": "application/json" }),
             body: JSON.stringify({ x: Math.round(item.x), y: Math.round(item.y) }),
           }).catch(console.error);
         }
       }
       setDrag(null);
     },
-    [drag, items],
+    [drag, items, authHeaders],
   );
 
   // Zoom toward a point (in viewport coords) keeping that point stationary, so
@@ -463,7 +479,7 @@ export default function ScrapbookPage() {
     async (body: Omit<ScrapItemRow, "id">) => {
       const res = await fetch("/api/scrapbook", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(body),
       });
       if (res.ok) {
@@ -475,7 +491,7 @@ export default function ScrapbookPage() {
         setItems((prev) => [...prev, { ...body, id }]);
       }
     },
-    [],
+    [authHeaders],
   );
 
   const saveItem = useCallback(
@@ -483,17 +499,17 @@ export default function ScrapbookPage() {
       setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
       await fetch(`/api/scrapbook/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(patch),
       }).catch(console.error);
     },
-    [],
+    [authHeaders],
   );
 
   const deleteItem = useCallback(async (id: string) => {
     setItems((prev) => prev.filter((it) => it.id !== id));
-    await fetch(`/api/scrapbook/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(console.error);
-  }, []);
+    await fetch(`/api/scrapbook/${encodeURIComponent(id)}`, { method: "DELETE", headers: authHeaders() }).catch(console.error);
+  }, [authHeaders]);
 
   // +/- buttons zoom toward the centre of the viewport.
   const zoomBy = (factor: number) => {

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin, supabaseAdminConfigured } from "@/lib/supabaseAdmin";
 import { userIdFromRequest } from "@/lib/serverAuth";
 
+// Never statically cache this route — it's always freshly fetched live data.
+export const dynamic = "force-dynamic";
+
 export type ScrapItemRow = {
   id: string;
   type: "img" | "quote" | "note";

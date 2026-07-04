@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import Svg, { Line, Rect } from "react-native-svg";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import Svg, { Circle, Rect } from "react-native-svg";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import { generateHealthInsights } from "../lib/healthInsights";
@@ -45,61 +45,87 @@ function DepthStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ── trend bar chart ───────────────────────────────────────────────────────────
+// ── progress ring ─────────────────────────────────────────────────────────────
+// Real SVG progress arc (mirrors the web Ring component) — the old version was
+// just a fixed gray border that never actually reflected value/target.
 
-function TrendBars({
-  values,
-  goal,
+function ProgressRing({
+  size,
+  stroke,
+  value,
+  target,
   color,
-  unitLabel,
+  children,
 }: {
-  values: (number | null)[];
-  goal?: number;
+  size: number;
+  stroke: number;
+  value: number;
+  target: number;
   color: string;
-  unitLabel: string;
+  children?: React.ReactNode;
 }) {
-  const width = Dimensions.get("window").width - 40; // screen padding 20 each side
-  const height = 92;
-  const nums = values.filter((v): v is number => v != null);
-  if (nums.length < 2) {
-    return <Text style={styles.noData}>Not enough history yet.</Text>;
-  }
-  const max = Math.max(...nums, goal ?? 0) * 1.1;
-  const n = values.length;
-  const slot = width / n;
-  const barW = Math.max(3, slot * 0.55);
-  const y = (v: number) => height - (v / max) * height;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const pct = target > 0 ? Math.min(Math.max(value / target, 0), 1) : 0;
+  const offset = circumference * (1 - pct);
 
   return (
-    <View>
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={size} height={size} style={{ position: "absolute", transform: [{ rotate: "-90deg" }] }}>
+        <Circle cx={size / 2} cy={size / 2} r={radius} stroke={colors.border} strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+        />
+      </Svg>
+      {children}
+    </View>
+  );
+}
+
+// ── trends ─────────────────────────────────────────────────────────────────────
+// One compact row of small sparklines instead of three full-width chart
+// sections — same data, far less visual weight.
+
+function Sparkline({ label, values, color, decimals = 0 }: { label: string; values: (number | null)[]; color: string; decimals?: number }) {
+  const width = 88;
+  const height = 30;
+  const nums = values.filter((v): v is number => v != null);
+
+  if (nums.length < 2) {
+    return (
+      <View style={styles.sparkCell}>
+        <Text style={styles.sparkLabel}>{label}</Text>
+        <Text style={styles.sparkNoData}>Not enough data</Text>
+      </View>
+    );
+  }
+
+  const max = Math.max(...nums) * 1.15 || 1;
+  const n = values.length;
+  const slot = width / n;
+  const barW = Math.max(2, slot * 0.5);
+  const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+
+  return (
+    <View style={styles.sparkCell}>
+      <Text style={styles.sparkLabel}>{label}</Text>
       <Svg width={width} height={height}>
-        {goal !== undefined ? (
-          <Line x1={0} y1={y(goal)} x2={width} y2={y(goal)} stroke={colors.border} strokeWidth={1} strokeDasharray="3 4" />
-        ) : null}
         {values.map((v, i) => {
           if (v == null) return null;
-          const barH = Math.max(2, (v / max) * height);
+          const barH = Math.max(1.5, (v / max) * height);
           const x = i * slot + (slot - barW) / 2;
-          const recent = i >= n - 3;
-          return (
-            <Rect
-              key={i}
-              x={x}
-              y={height - barH}
-              width={barW}
-              height={barH}
-              rx={Math.min(3, barW / 2)}
-              fill={recent ? color : colors.border}
-            />
-          );
+          return <Rect key={i} x={x} y={height - barH} width={barW} height={barH} rx={1} fill={i >= n - 3 ? color : colors.border} />;
         })}
       </Svg>
-      <View style={styles.trendAxis}>
-        <Text style={styles.trendAxisText}>{`${nums.length}d`}</Text>
-        <Text style={styles.trendAxisText}>
-          avg {(nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(unitLabel === "h" ? 1 : 0)}{unitLabel}
-        </Text>
-      </View>
+      <Text style={styles.sparkValue}>{`${avg.toFixed(decimals)} avg`}</Text>
     </View>
   );
 }
@@ -125,10 +151,10 @@ function WaterSection() {
     <>
       <Text style={[styles.subheader, { marginTop: 28 }]}>Water · Today</Text>
       <View style={styles.nutritionRow}>
-        <View style={styles.ring}>
+        <ProgressRing size={76} stroke={7} value={water} target={WATER_TARGET_OZ} color="#0891b2">
           <Text style={styles.ringValue}>{fmtInt(water)}</Text>
           <Text style={styles.ringUnit}>{`/${WATER_TARGET_OZ} oz`}</Text>
-        </View>
+        </ProgressRing>
         <View style={styles.waterButtons}>
           <Pressable style={styles.waterBtn} onPress={() => logWater(9)}>
             <Text style={styles.waterBtnText}>+ 9 oz glass</Text>
@@ -271,23 +297,21 @@ function HealthDetail({ onClose }: { onClose: () => void }) {
             </View>
           ) : null}
 
-          {/* trends */}
-          <Text style={[styles.subheader, { marginTop: 28 }]}>Sleep · Last 2 Weeks</Text>
-          <TrendBars values={recent((d) => d.sleepHours)} goal={8} color="#7c3aed" unitLabel="h" />
-
-          <Text style={[styles.subheader, { marginTop: 24 }]}>Steps · Last 2 Weeks</Text>
-          <TrendBars values={recent((d) => d.steps)} color="#0d9488" unitLabel="" />
-
-          <Text style={[styles.subheader, { marginTop: 24 }]}>Resting HR · Last 2 Weeks</Text>
-          <TrendBars values={recent((d) => d.restingHeartRate)} color="#b91c1c" unitLabel="" />
+          {/* trends — compact, three small sparklines instead of three full charts */}
+          <Text style={[styles.subheader, { marginTop: 28 }]}>Trends · Last 2 Weeks</Text>
+          <View style={styles.sparkRow}>
+            <Sparkline label="Sleep" values={recent((d) => d.sleepHours)} color="#7c3aed" decimals={1} />
+            <Sparkline label="Steps" values={recent((d) => d.steps)} color="#0d9488" />
+            <Sparkline label="Resting HR" values={recent((d) => d.restingHeartRate)} color="#b91c1c" />
+          </View>
 
           {/* nutrition */}
           <Text style={[styles.subheader, { marginTop: 28 }]}>Nutrition · Today</Text>
           <View style={styles.nutritionRow}>
-            <View style={styles.ring}>
+            <ProgressRing size={76} stroke={7} value={health?.calories ?? 0} target={2100} color="#f97316">
               <Text style={styles.ringValue}>{fmtInt(health?.calories)}</Text>
               <Text style={styles.ringUnit}>/2100 kcal</Text>
-            </View>
+            </ProgressRing>
             <View style={styles.macros}>
               <MacroRow label="PROTEIN" value={health?.protein !== undefined ? `${fmtInt(health.protein)}g` : "—"} />
               <MacroRow label="CARBS" value={health?.carbs !== undefined ? `${fmtInt(health.carbs)}g` : "—"} />
@@ -386,11 +410,13 @@ const styles = StyleSheet.create({
   depthValue: { fontFamily: fonts.serif, fontSize: 20, color: colors.textPrimary },
   depthLabel: { fontFamily: fonts.mono, fontSize: 8, textTransform: "uppercase", letterSpacing: 0.5, color: colors.textTertiary, marginTop: 3 },
   // trends
-  trendAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
-  trendAxisText: { fontFamily: fonts.mono, fontSize: 9, color: colors.textFaint, textTransform: "uppercase", letterSpacing: 0.5 },
+  sparkRow: { flexDirection: "row", justifyContent: "space-between" },
+  sparkCell: { alignItems: "center", gap: 4 },
+  sparkLabel: { fontFamily: fonts.mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, color: colors.textSecondary },
+  sparkValue: { fontFamily: fonts.mono, fontSize: 9, color: colors.textFaint },
+  sparkNoData: { fontFamily: fonts.sans, fontSize: 10.5, color: colors.textFaint, fontStyle: "italic", maxWidth: 88, textAlign: "center" },
   // nutrition
   nutritionRow: { flexDirection: "row", alignItems: "center", gap: 18 },
-  ring: { width: 76, height: 76, borderRadius: 38, borderWidth: 6, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   ringValue: { fontFamily: fonts.serif, fontSize: 20, color: colors.textPrimary },
   ringUnit: { fontFamily: fonts.mono, fontSize: 7.5, color: colors.textFaint },
   macros: { flex: 1 },

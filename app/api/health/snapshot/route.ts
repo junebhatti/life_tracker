@@ -3,6 +3,9 @@ import { fetchHealthSnapshot, googleHealthConfigured } from "@/lib/googleHealth"
 import { userIdFromRequest } from "@/lib/serverAuth";
 import { supabaseAdmin, supabaseAdminConfigured } from "@/lib/supabaseAdmin";
 
+// Never statically cache this route — it's always freshly fetched live data.
+export const dynamic = "force-dynamic";
+
 /** Civil-day (YYYY-MM-DD) string for the given IANA timezone. */
 function civilDateKey(timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());

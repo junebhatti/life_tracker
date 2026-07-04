@@ -7,7 +7,14 @@ import { supabase } from "../lib/supabase";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "";
 const SCRAP_KEY = process.env.EXPO_PUBLIC_SCRAPBOOK_KEY ?? "";
-function scrapHeaders(): Record<string, string> {
+// The scrapbook API accepts either a signed-in Supabase session (Bearer token)
+// or this shared key. We're already signed in everywhere the app is used, so
+// prefer the real session — it doesn't depend on a separately-configured env
+// var matching the server's SCRAPBOOK_API_KEY.
+async function scrapHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (token) return { Authorization: `Bearer ${token}` };
   return SCRAP_KEY ? { "x-scrapbook-key": SCRAP_KEY } : {};
 }
 
@@ -351,7 +358,11 @@ export function AppStateProvider({
     // native (no origin) when no explicit API_URL is configured.
     if (!API_URL && Platform.OS !== "web") return;
     try {
-      const res = await fetch(`${API_URL}/api/calendar/agenda`);
+      // Installed standalone PWAs (especially iOS) are known to cache plain
+      // fetch() GETs far more aggressively than a normal browser tab — the
+      // same class of bug we fixed for the HTML shell (see App.tsx). Without
+      // cache-busting this can get stuck showing months-old calendar data.
+      const res = await fetch(`${API_URL}/api/calendar/agenda?t=${Date.now()}`, { cache: "no-store" });
       const json = (await res.json()) as { events?: EditableEvent[] };
       if (json.events?.length) {
         const now = new Date();
@@ -369,9 +380,11 @@ export function AppStateProvider({
   async function loadScrapbook() {
     if (!API_URL && Platform.OS !== "web") return;
     try {
-      const res = await fetch(`${API_URL}/api/scrapbook`, { headers: scrapHeaders() });
+      const headers = await scrapHeaders();
+      const res = await fetch(`${API_URL}/api/scrapbook?t=${Date.now()}`, { headers, cache: "no-store" });
+      if (!res.ok) return;
       const json = (await res.json()) as { items?: ScrapItem[] };
-      if (json.items?.length) setScrapItems(json.items);
+      setScrapItems(json.items ?? []);
     } catch {
       // offline — leave empty
     }
@@ -390,7 +403,10 @@ export function AppStateProvider({
     if (!API_URL && Platform.OS !== "web") return;
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const res = await fetch(`${API_URL}/api/health/snapshot?timezone=${encodeURIComponent(tz)}`);
+      const res = await fetch(
+        `${API_URL}/api/health/snapshot?timezone=${encodeURIComponent(tz)}&t=${Date.now()}`,
+        { cache: "no-store" },
+      );
       const json = (await res.json()) as {
         configured?: boolean;
         snapshot?: {
@@ -435,8 +451,9 @@ export function AppStateProvider({
     try {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
-      const res = await fetch(`${API_URL}/api/health/history`, {
+      const res = await fetch(`${API_URL}/api/health/history?t=${Date.now()}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        cache: "no-store",
       });
       if (!res.ok) return;
       const json = (await res.json()) as { days?: HealthHistoryDay[] };

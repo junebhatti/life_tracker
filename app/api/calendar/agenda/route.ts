@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { accountKeys, fetchAgendaEvents, googleCalendarConfigured } from "@/lib/googleCalendar";
 
+// Never statically cache this route — it's always freshly fetched live data.
+export const dynamic = "force-dynamic";
+
 /** Powers the editable /calendar page — a wider window than the Today page's Up Next widget. */
 export async function GET() {
   if (!googleCalendarConfigured()) {

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { userIdFromRequest } from "@/lib/serverAuth";
 import { supabaseAdmin, supabaseAdminConfigured } from "@/lib/supabaseAdmin";
 
+// Never statically cache this route — it's always freshly fetched live data.
+export const dynamic = "force-dynamic";
+
 export type HealthMetricsDay = {
   date: string;
   sleepHours: number | null;
