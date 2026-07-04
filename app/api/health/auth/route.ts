@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Restricted scopes (require Google's CASA review for >100-user / public
-// apps — exempt here since this is single-user). Steps, sleep, and resting
-// heart rate respectively.
+// apps — exempt here since this is single-user). Steps, sleep, resting heart
+// rate, and nutrition respectively. The nutrition scope was added after the
+// original consent — a refresh token minted before this change doesn't carry
+// it, which is why nutrition-log requests 403 until you reconnect.
 const SCOPES = [
   "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
   "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
   "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
+  "https://www.googleapis.com/auth/googlehealth.nutrition.readonly",
 ].join(" ");
 
 /** Kicks off the one-time consent flow that mints a refresh token. */
