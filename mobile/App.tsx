@@ -48,7 +48,6 @@ import ProjectsScreen from "./src/screens/ProjectsScreen";
 import LibraryScreen from "./src/screens/LibraryScreen";
 import ScrapbookScreen from "./src/screens/ScrapbookScreen";
 import SearchScreen from "./src/screens/SearchScreen";
-import FlashcardsScreen from "./src/screens/FlashcardsScreen";
 
 function AppShell() {
   const [tab, setTab] = useState<TabKey>("Today");
@@ -70,7 +69,6 @@ function AppShell() {
           {tab === "Tasks" ? <TasksScreen /> : null}
           {tab === "Projects" ? <ProjectsScreen /> : null}
           {tab === "Library" ? <LibraryScreen /> : null}
-          {tab === "Urdu" ? <FlashcardsScreen /> : null}
           {tab === "Search" ? <SearchScreen /> : null}
         </ScrollView>
       )}

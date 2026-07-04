@@ -114,8 +114,11 @@ function mapNote(row: NoteRow): LibraryNote {
 }
 
 function mapProject(row: ProjectRow): Project {
-  const type = (row.type === "retainer" || row.type === "area" ? row.type : "active") as ProjectType;
-  const group = type === "retainer" ? "Retainers" : type === "area" ? "Areas" : "Active";
+  const type = (
+    row.type === "retainer" || row.type === "area" || row.type === "practice" ? row.type : "active"
+  ) as ProjectType;
+  const group =
+    type === "retainer" ? "Retainers" : type === "area" ? "Areas" : type === "practice" ? "Practice" : "Active";
   const milestones: Milestone[] = Array.isArray(row.milestones) ? row.milestones : [];
   const checklist: ChecklistItem[] = Array.isArray(row.checklist) ? row.checklist : [];
   const activity: ActivityEntry[] = Array.isArray(row.activity) ? row.activity : [];

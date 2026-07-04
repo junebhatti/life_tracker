@@ -14,6 +14,7 @@ const TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
   { value: "active", label: "Active" },
   { value: "retainer", label: "Retainer" },
   { value: "area", label: "Area" },
+  { value: "practice", label: "Practice" },
 ];
 
 /** Modal form for creating a project or area. */

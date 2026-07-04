@@ -5,14 +5,18 @@ import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import PageHeader from "../components/PageHeader";
 import TaskRow from "../components/TaskRow";
+import FlashcardsScreen from "./FlashcardsScreen";
 import type { Project, ProjectGroup, ProjectType } from "../types";
 
+// "Practice" is rendered as its own always-visible section (below), so it's
+// deliberately excluded here — the generic groups only show when non-empty.
 const GROUP_ORDER: ProjectGroup[] = ["Active", "Retainers", "Areas"];
 const PROJECT_COLORS = ["#b91c1c", "#c2410c", "#a16207", "#16a34a", "#0d9488", "#2563eb", "#7c3aed", "#6b7280"];
 const TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
   { value: "active", label: "Active" },
   { value: "retainer", label: "Retainer" },
   { value: "area", label: "Area" },
+  { value: "practice", label: "Practice" },
 ];
 
 function groupProjects(projects: Project[]) {
@@ -258,12 +262,39 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── practice: flashcards ────────────────────────────────────────────────────────
+// Flashcards lives inside Projects (under "Practice") instead of its own
+// bottom-nav tab — one less tab, and a natural home next to future
+// skill-building projects.
+
+function FlashcardsModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={styles.sheetWrap}>
+        <View style={styles.sheetHandle} />
+        <View style={styles.sheetHeader}>
+          <View style={[styles.dot, { backgroundColor: "#b23a2e" }]} />
+          <Text style={styles.sheetTitle}>Urdu Flashcards</Text>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <Text style={styles.sheetClose}>✕</Text>
+          </Pressable>
+        </View>
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
+          <FlashcardsScreen />
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
 // ── screen ────────────────────────────────────────────────────────────────────
 
 export default function ProjectsScreen() {
   const { projects, selectedProjectId, openProject } = useAppState();
   const [showNew, setShowNew] = useState(false);
+  const [showFlashcards, setShowFlashcards] = useState(false);
   const groups = useMemo(() => groupProjects(projects), [projects]);
+  const practiceProjects = useMemo(() => projects.filter((p) => p.group === "Practice"), [projects]);
   const activeCount = projects.filter((p) => p.group === "Active").length;
   const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? null;
 
@@ -291,12 +322,36 @@ export default function ProjectsScreen() {
         </View>
       ))}
 
+      {/* Practice — always shown (Flashcards lives here), unlike the groups above */}
+      <View>
+        <Text style={styles.groupLabel}>{`Practice · ${practiceProjects.length + 1}`}</Text>
+        <Pressable style={styles.row} onPress={() => setShowFlashcards(true)}>
+          <View style={[styles.dot, { backgroundColor: "#b23a2e" }]} />
+          <View style={styles.body}>
+            <Text style={styles.name}>Urdu Flashcards</Text>
+            <Text style={styles.meta}>Elementary Urdu II</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+        {practiceProjects.map((p) => (
+          <Pressable key={p.id} style={styles.row} onPress={() => openProject(p.id)}>
+            <View style={[styles.dot, { backgroundColor: p.color }]} />
+            <View style={styles.body}>
+              <Text style={styles.name}>{p.name}</Text>
+              {p.meta ? <Text style={styles.meta}>{p.meta}</Text> : null}
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        ))}
+      </View>
+
       {projects.length === 0 ? (
         <Text style={styles.empty}>No projects yet. Tap “+ New project” to create one.</Text>
       ) : null}
 
       {selectedProject ? <ProjectDetail project={selectedProject} onClose={() => openProject(null)} /> : null}
       {showNew ? <NewProjectModal onClose={() => setShowNew(false)} /> : null}
+      {showFlashcards ? <FlashcardsModal onClose={() => setShowFlashcards(false)} /> : null}
     </View>
   );
 }

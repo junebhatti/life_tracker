@@ -3,9 +3,10 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { colors, fonts } from "../theme";
 
-export type TabKey = "Today" | "Tasks" | "Projects" | "Library" | "Scrapbook" | "Urdu" | "Search";
+// Flashcards lives inside Projects (under "Practice") instead of its own tab.
+export type TabKey = "Today" | "Tasks" | "Projects" | "Library" | "Scrapbook" | "Search";
 
-const TABS: TabKey[] = ["Today", "Tasks", "Projects", "Library", "Scrapbook", "Urdu", "Search"];
+const TABS: TabKey[] = ["Today", "Tasks", "Projects", "Library", "Scrapbook", "Search"];
 
 export default function BottomNav({
   active,

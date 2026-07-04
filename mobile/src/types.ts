@@ -20,7 +20,7 @@ export type AgendaEvent = {
   location?: string;
 };
 
-export type ProjectGroup = "Active" | "Retainers" | "Areas";
+export type ProjectGroup = "Active" | "Retainers" | "Areas" | "Practice";
 
 // Shapes mirror the web ProjectStore jsonb: milestones carry a weight, checklist
 // items a recurrence. Both use `title` (not `text`) so the two apps read/write
@@ -35,7 +35,7 @@ export type ActivityEntry = {
   at: string;
 };
 
-export type ProjectType = "active" | "retainer" | "area";
+export type ProjectType = "active" | "retainer" | "area" | "practice";
 
 export type Project = {
   id: string;

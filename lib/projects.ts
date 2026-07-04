@@ -1,7 +1,7 @@
 // Project model: a persistent workspace with milestones, a checklist, and an
 // activity log. Projects are referenced by tasks via `projectId`.
 
-export type ProjectType = "active" | "retainer" | "area";
+export type ProjectType = "active" | "retainer" | "area" | "practice";
 
 export type Milestone = {
   id: string;
