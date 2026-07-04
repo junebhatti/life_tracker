@@ -1,10 +1,12 @@
 import React, { useState } from "react";
-import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Line, Rect } from "react-native-svg";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import { generateHealthInsights } from "../lib/healthInsights";
 import type { HealthHistoryDay } from "../types";
+
+const WATER_TARGET_OZ = 100;
 
 function fmt1(n: number | undefined): string {
   return n !== undefined ? n.toFixed(1) : "—";
@@ -99,6 +101,65 @@ function TrendBars({
         </Text>
       </View>
     </View>
+  );
+}
+
+// ── water tracker ──────────────────────────────────────────────────────────────
+// Logged straight from the app (not sourced from Fitbit) — the 9oz/12oz
+// glasses used at home, or a custom amount.
+
+function WaterSection() {
+  const { water, logWater } = useAppState();
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customValue, setCustomValue] = useState("");
+
+  function submitCustom() {
+    const oz = Number(customValue);
+    if (!oz || oz <= 0) return;
+    logWater(oz);
+    setCustomValue("");
+    setCustomOpen(false);
+  }
+
+  return (
+    <>
+      <Text style={[styles.subheader, { marginTop: 28 }]}>Water · Today</Text>
+      <View style={styles.nutritionRow}>
+        <View style={styles.ring}>
+          <Text style={styles.ringValue}>{fmtInt(water)}</Text>
+          <Text style={styles.ringUnit}>{`/${WATER_TARGET_OZ} oz`}</Text>
+        </View>
+        <View style={styles.waterButtons}>
+          <Pressable style={styles.waterBtn} onPress={() => logWater(9)}>
+            <Text style={styles.waterBtnText}>+ 9 oz glass</Text>
+          </Pressable>
+          <Pressable style={styles.waterBtn} onPress={() => logWater(12)}>
+            <Text style={styles.waterBtnText}>+ 12 oz glass</Text>
+          </Pressable>
+          <Pressable style={styles.waterBtn} onPress={() => setCustomOpen((v) => !v)}>
+            <Text style={styles.waterBtnText}>Custom…</Text>
+          </Pressable>
+        </View>
+      </View>
+      {customOpen ? (
+        <View style={styles.customRow}>
+          <TextInput
+            style={styles.customInput}
+            value={customValue}
+            onChangeText={setCustomValue}
+            placeholder="oz"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="number-pad"
+            onSubmitEditing={submitCustom}
+            returnKeyType="done"
+            autoFocus
+          />
+          <Pressable style={styles.customBtn} onPress={submitCustom}>
+            <Text style={styles.customBtnText}>Log</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </>
   );
 }
 
@@ -233,6 +294,9 @@ function HealthDetail({ onClose }: { onClose: () => void }) {
               <MacroRow label="FAT" value={health?.fat !== undefined ? `${fmtInt(health.fat)}g` : "—"} />
             </View>
           </View>
+
+          {/* water */}
+          <WaterSection />
         </ScrollView>
       </View>
     </Modal>
@@ -340,4 +404,28 @@ const styles = StyleSheet.create({
   },
   macroLabel: { fontFamily: fonts.mono, fontSize: 9.5, color: colors.textSecondary },
   macroValue: { fontFamily: fonts.serif, fontSize: 16, color: colors.textPrimary },
+  // water
+  waterButtons: { flex: 1, gap: 8 },
+  waterBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  waterBtnText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.textPrimary },
+  customRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
+  customInput: {
+    flex: 1,
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    color: colors.textPrimary,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  customBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.surfaceDark },
+  customBtnText: { fontFamily: fonts.sansMedium, fontSize: 12.5, color: "#fff" },
 });

@@ -6,3 +6,6 @@ export const NUTRITION_TARGETS = {
   carbsGrams: 250,
   fatGrams: 60,
 };
+
+// Daily water intake target for the water ring, in ounces.
+export const WATER_TARGET_OZ = 100;

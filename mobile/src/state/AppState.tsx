@@ -180,6 +180,8 @@ type AppStateValue = {
   routines: Routine[];
   health: HealthData | null;
   healthHistory: HealthHistoryDay[];
+  water: number;
+  logWater: (amountOz: number) => void;
   loading: boolean;
   refreshing: boolean;
   refreshAll: () => Promise<void>;
@@ -250,6 +252,7 @@ export function AppStateProvider({
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthHistory, setHealthHistory] = useState<HealthHistoryDay[]>([]);
+  const [water, setWater] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -283,8 +286,26 @@ export function AppStateProvider({
       loadRoutines(),
       loadHealth(),
       loadHealthHistory(),
+      loadWater(),
     ]);
     setLoading(false);
+  }
+
+  /** Start of the local civil day — water is logged straight from the app
+   *  (not sourced from Fitbit), so "today" is just this device's own clock. */
+  function startOfDayIso(): string {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }
+
+  async function loadWater() {
+    const { data } = await supabase
+      .from("water_logs")
+      .select("amount_oz")
+      .eq("user_id", userId)
+      .gte("logged_at", startOfDayIso());
+    if (data) setWater((data as { amount_oz: number }[]).reduce((sum, r) => sum + Number(r.amount_oz), 0));
   }
 
   async function loadTasks() {
@@ -439,6 +460,7 @@ export function AppStateProvider({
       loadRoutines(),
       loadHealth(),
       loadHealthHistory(),
+      loadWater(),
     ]);
     setRefreshing(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -470,6 +492,25 @@ export function AppStateProvider({
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
+
+  // Logged straight from the app (not sourced from Fitbit) — a 9oz/12oz glass
+  // or a custom amount, added to today's running total.
+  const logWater = useCallback((amountOz: number) => {
+    if (!(amountOz > 0)) return;
+    setWater((prev) => prev + amountOz);
+    const id = `w${Date.now()}`;
+    void supabase
+      .from("water_logs")
+      .insert({ id, user_id: userId, amount_oz: amountOz, logged_at: new Date().toISOString() })
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to log water", error);
+          showToast("Couldn't save — check your connection");
+          void loadWater();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, showToast]);
 
   // Create a task directly (used by the Today page's inline "add a top task"
   // slot and the project detail's "add task" row). starred=true → Top 3;
@@ -819,7 +860,7 @@ export function AppStateProvider({
 
   const value = useMemo<AppStateValue>(
     () => ({
-      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, loading,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, logWater, loading,
       refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, addTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
@@ -834,7 +875,7 @@ export function AppStateProvider({
       signOut,
     }),
     [
-      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, loading,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, logWater, loading,
       refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, addTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,

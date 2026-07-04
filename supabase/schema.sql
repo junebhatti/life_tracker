@@ -175,6 +175,26 @@ create table if not exists public.scrap_items (
 );
 create index if not exists scrap_items_owner_idx on public.scrap_items (owner);
 
+-- Water intake, logged directly from the app (not sourced from Fitbit/Google
+-- Health) — one row per log entry so a day's total is the sum of amount_oz
+-- for that civil day.
+create table if not exists public.water_logs (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  amount_oz numeric not null,
+  logged_at timestamptz not null default now()
+);
+
+create index if not exists water_logs_user_id_idx on public.water_logs (user_id, logged_at);
+alter table public.water_logs enable row level security;
+
+drop policy if exists "water_logs_select_own" on public.water_logs;
+drop policy if exists "water_logs_insert_own" on public.water_logs;
+drop policy if exists "water_logs_delete_own" on public.water_logs;
+create policy "water_logs_select_own" on public.water_logs for select using (auth.uid() = user_id);
+create policy "water_logs_insert_own" on public.water_logs for insert with check (auth.uid() = user_id);
+create policy "water_logs_delete_own" on public.water_logs for delete using (auth.uid() = user_id);
+
 -- Plaid access tokens for linked bank/credit accounts. RLS is enabled with
 -- NO policies below, so the anon/authenticated client can never read or
 -- write this table — only server routes using the service-role key (which

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import TrendChart from "@/components/TrendChart";
 import NutritionRings, { type Nutrition } from "@/components/NutritionRings";
+import WaterTracker from "@/components/WaterTracker";
 import { useAuth } from "@/components/AuthProvider";
 
 type SleepStages = {
@@ -291,6 +292,9 @@ export default function HealthPage() {
                   )}
                 </div>
               </section>
+
+              {/* Water — logged directly in-app, not from Google Health */}
+              <WaterTracker />
 
               {/* Sleep */}
               <MetricSection
