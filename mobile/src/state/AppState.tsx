@@ -63,10 +63,6 @@ type RoutineRow = {
   id: string; title: string; description?: string | null;
   period: string; streak_goal?: number | null; history: string[];
 };
-type EditableEvent = {
-  id: string; title: string; location?: string | null;
-  allDay: boolean; start: string; end: string; accountKey: string;
-};
 
 // ---------------------------------------------------------------------------
 // Mappers
@@ -153,23 +149,6 @@ function mapRoutine(row: RoutineRow): Routine {
 
 function mapPerson(row: PersonRow): Person {
   return { id: row.id, name: row.name, noteCount: 0 };
-}
-
-function mapAgendaEvent(e: EditableEvent): AgendaEvent {
-  const start = new Date(e.start);
-  const today = new Date();
-  const isToday = start.toDateString() === today.toDateString();
-  const isTomorrow =
-    start.toDateString() === new Date(today.getTime() + 86_400_000).toDateString();
-  const day = isToday
-    ? "Today"
-    : isTomorrow
-    ? "Tomorrow"
-    : start.toLocaleDateString("en-US", { weekday: "short" });
-  const time = e.allDay
-    ? "All day"
-    : start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return { id: e.id, title: e.title, day, time, location: e.location ?? undefined };
 }
 
 function todayStr(): string {
@@ -361,19 +340,23 @@ export function AppStateProvider({
     // native (no origin) when no explicit API_URL is configured.
     if (!API_URL && Platform.OS !== "web") return;
     try {
+      // NB: /api/calendar/agenda intentionally returns a wide ±90-day window
+      // for the full editable /calendar page — using it here meant this
+      // "what's coming up" widget showed events from months in the past
+      // (worse, any all-day event in that window was kept unconditionally,
+      // regardless of date). /api/calendar/events is the narrow "upcoming
+      // only" endpoint the web Today page's own calendar widget already
+      // uses, and its window never includes the past, so no client-side
+      // date filtering is needed here either.
+      //
       // Installed standalone PWAs (especially iOS) are known to cache plain
       // fetch() GETs far more aggressively than a normal browser tab — the
-      // same class of bug we fixed for the HTML shell (see App.tsx). Without
-      // cache-busting this can get stuck showing months-old calendar data.
-      const res = await fetch(`${API_URL}/api/calendar/agenda?t=${Date.now()}`, { cache: "no-store" });
-      const json = (await res.json()) as { events?: EditableEvent[] };
-      if (json.events?.length) {
-        const now = new Date();
-        const upcoming = json.events
-          .filter((e) => e.allDay || new Date(e.start) >= now)
-          .slice(0, 6)
-          .map(mapAgendaEvent);
-        setAgenda(upcoming);
+      // same class of bug we fixed for the HTML shell (see App.tsx) — so we
+      // still fetch with cache-busting.
+      const res = await fetch(`${API_URL}/api/calendar/events?t=${Date.now()}`, { cache: "no-store" });
+      const json = (await res.json()) as { events?: Array<Omit<AgendaEvent, "time"> & { time?: string }> };
+      if (json.events) {
+        setAgenda(json.events.slice(0, 6).map((e) => ({ ...e, time: e.time ?? "All day" })));
       }
     } catch {
       // calendar not configured or offline — leave empty
