@@ -418,6 +418,17 @@ async function fetchNutritionToday(
   const carbsGrams = readQuantity(log.totalCarbohydrate, ["grams", "value", "amount", "sum", "gramsSum"]);
   const fatGrams = readQuantity(log.totalFat, ["grams", "value", "amount", "sum", "gramsSum"]);
 
+  // totalProtein was a guess (carbs/fat's confirmed keys suggested the same
+  // "total<Nutrient>" pattern) and it's apparently still wrong. Rather than
+  // guess a third time, log the actual keys so the real field name shows up
+  // in Vercel's function logs next time this runs.
+  if (proteinGrams === undefined) {
+    console.error(
+      "Nutrition protein still unresolved — actual payload keys:",
+      JSON.stringify({ logKeys: Object.keys(log), nutrientsKeys: nutrients ? Object.keys(nutrients) : null }),
+    );
+  }
+
   if (
     calories === undefined &&
     proteinGrams === undefined &&
