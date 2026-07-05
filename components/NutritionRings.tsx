@@ -1,6 +1,6 @@
 "use client";
 
-import { NUTRITION_TARGETS } from "@/lib/nutritionTargets";
+import { NUTRITION_TARGETS, WATER_TARGET_OZ } from "@/lib/nutritionTargets";
 
 export type Nutrition = {
   calories?: number;
@@ -57,25 +57,29 @@ function MacroRing({
   value,
   target,
   color,
+  unit = "g",
 }: {
   label: string;
   value: number;
   target: number;
   color: string;
+  unit?: string;
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <div className="relative flex items-center justify-center">
         <Ring size={56} stroke={6} value={value} target={target} color={color} />
-        <span className="absolute text-xs font-medium text-foreground">{Math.round(value)}g</span>
+        <span className="absolute text-xs font-medium text-foreground">{Math.round(value)}{unit}</span>
       </div>
       <span className="text-[10px] uppercase tracking-wide text-muted">{label}</span>
     </div>
   );
 }
 
-/** Calorie ring + protein/carbs/fat macro rings against the daily targets. Presentational only. */
-export default function NutritionRings({ nutrition }: { nutrition?: Nutrition }) {
+/** Calorie ring + protein/carbs/fat macro rings against the daily targets. Presentational only.
+ *  `waterOz`, when provided, adds a 4th ring for today's logged water (a separate,
+ *  in-app-only data source from the Google Health-sourced nutrition). */
+export default function NutritionRings({ nutrition, waterOz }: { nutrition?: Nutrition; waterOz?: number }) {
   const calories = nutrition?.calories ?? 0;
   const protein = nutrition?.proteinGrams ?? 0;
   const carbs = nutrition?.carbsGrams ?? 0;
@@ -101,6 +105,9 @@ export default function NutritionRings({ nutrition }: { nutrition?: Nutrition })
         <MacroRing label="Protein" value={protein} target={NUTRITION_TARGETS.proteinGrams} color="#3b82f6" />
         <MacroRing label="Carbs" value={carbs} target={NUTRITION_TARGETS.carbsGrams} color="#22c55e" />
         <MacroRing label="Fat" value={fat} target={NUTRITION_TARGETS.fatGrams} color="#eab308" />
+        {waterOz !== undefined && (
+          <MacroRing label="Water" value={waterOz} target={WATER_TARGET_OZ} color="#0891b2" unit="oz" />
+        )}
       </div>
     </div>
   );

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import SectionHeading from "./SectionHeading";
 import NutritionRings, { type Nutrition } from "./NutritionRings";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/AuthProvider";
 
 type SnapshotResponse = {
   configured: boolean;
@@ -11,9 +13,19 @@ type SnapshotResponse = {
   error?: string;
 };
 
-/** Calorie + macro rings for today, synced in via Google Health (nutrition apps feeding it). */
+function startOfDayIso(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+/** Calorie + macro rings for today, synced in via Google Health (nutrition apps feeding it),
+ *  plus a 4th ring for today's logged water — a separate in-app-only data source.
+ *  Logging happens on /health; this is just a glance-and-go preview. */
 export default function NutritionSnapshot() {
+  const { user } = useAuth();
   const [state, setState] = useState<SnapshotResponse | null>(null);
+  const [waterOz, setWaterOz] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,6 +44,23 @@ export default function NutritionSnapshot() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    supabase
+      .from("water_logs")
+      .select("amount_oz")
+      .eq("user_id", user.id)
+      .gte("logged_at", startOfDayIso())
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        setWaterOz((data ?? []).reduce((sum, row) => sum + Number(row.amount_oz), 0));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   if (state && !state.configured) return null;
 
@@ -63,7 +92,7 @@ export default function NutritionSnapshot() {
 
       {state && !state.error && (
         <Link href="/health" className="mt-2 block">
-          <NutritionRings nutrition={state?.snapshot?.nutrition} />
+          <NutritionRings nutrition={state?.snapshot?.nutrition} waterOz={waterOz} />
         </Link>
       )}
     </section>

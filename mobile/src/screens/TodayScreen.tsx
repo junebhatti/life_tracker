@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
@@ -6,6 +6,17 @@ import PageHeader from "../components/PageHeader";
 import TaskRow from "../components/TaskRow";
 import HealthWidget from "../components/HealthWidget";
 import TodaySettings from "../components/TodaySettings";
+import type { Routine } from "../types";
+
+// Matches lib/routines.ts ROUTINE_PERIODS on web — same four buckets.
+const ROUTINE_PERIODS = ["Morning", "Afternoon", "Evening", "Anytime"];
+
+function groupRoutines(routines: Routine[]) {
+  return ROUTINE_PERIODS.map((period) => ({
+    period,
+    routines: routines.filter((r) => r.period === period),
+  })).filter((g) => g.routines.length > 0);
+}
 
 function todayTitle(): string {
   return new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -64,6 +75,7 @@ export default function TodayScreen() {
   const { tasks, agenda, routines, toggleRoutine } = useAppState();
   const starred = tasks.filter((t) => t.starred && !t.done).slice(0, 3);
   const openTasks = tasks.filter((t) => !t.done);
+  const routineGroups = useMemo(() => groupRoutines(routines), [routines]);
 
   return (
     <View>
@@ -110,24 +122,29 @@ export default function TodayScreen() {
       {routines.length > 0 ? (
         <>
           <Text style={styles.sectionLabel}>Routines</Text>
-          {routines.map((r) => (
-            <Pressable key={r.id} style={styles.routineRow} onPress={() => toggleRoutine(r.id)}>
-              <View style={[styles.routineCheck, r.doneToday && styles.routineCheckDone]}>
-                {r.doneToday ? <Text style={styles.routineCheckMark}>✓</Text> : null}
-              </View>
-              <View style={styles.routineBody}>
-                <Text style={[styles.routineTitle, r.doneToday && styles.routineDone]}>
-                  {r.title}
-                </Text>
-                {r.description ? (
-                  <Text style={styles.routineMeta}>{r.description}</Text>
-                ) : null}
-              </View>
-              <View style={styles.routineStreak}>
-                <Text style={styles.routineStreakNum}>{r.streak}</Text>
-                <Text style={styles.routineStreakLabel}>streak</Text>
-              </View>
-            </Pressable>
+          {routineGroups.map((g) => (
+            <View key={g.period}>
+              <Text style={styles.routineGroupLabel}>{g.period}</Text>
+              {g.routines.map((r) => (
+                <Pressable key={r.id} style={styles.routineRow} onPress={() => toggleRoutine(r.id)}>
+                  <View style={[styles.routineCheck, r.doneToday && styles.routineCheckDone]}>
+                    {r.doneToday ? <Text style={styles.routineCheckMark}>✓</Text> : null}
+                  </View>
+                  <View style={styles.routineBody}>
+                    <Text style={[styles.routineTitle, r.doneToday && styles.routineDone]}>
+                      {r.title}
+                    </Text>
+                    {r.description ? (
+                      <Text style={styles.routineMeta}>{r.description}</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.routineStreak}>
+                    <Text style={styles.routineStreakNum}>{r.streak}</Text>
+                    <Text style={styles.routineStreakLabel}>streak</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
           ))}
         </>
       ) : null}
@@ -216,6 +233,15 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     color: colors.textTertiary,
     marginTop: 2,
+  },
+  routineGroupLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+    color: colors.textTertiary,
+    marginTop: 14,
+    marginBottom: 2,
   },
   routineRow: {
     flexDirection: "row",

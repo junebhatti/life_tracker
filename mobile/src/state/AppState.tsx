@@ -93,6 +93,7 @@ function mapTask(row: TaskRow): Task {
     dueLabel: row.due ? dueLabel(row.due) : undefined,
     overdue: !!(row.due && row.due < today && row.status === "open"),
     recurring: !!row.recurrence,
+    recurrence: row.recurrence ?? undefined,
   };
 }
 
@@ -177,6 +178,8 @@ type AppStateValue = {
   toggleTaskDone: (id: string) => void;
   toggleTaskStar: (id: string) => void;
   addTask: (title: string, opts?: { starred?: boolean; projectId?: string }) => void;
+  updateTask: (id: string, patch: { title?: string; projectId?: string | null; dueDate?: string | null; recurrence?: string | null; starred?: boolean }) => void;
+  deleteTask: (id: string) => void;
   toggleRoutine: (id: string) => void;
   toggleMilestone: (projectId: string, milestoneId: string) => void;
   toggleChecklistItem: (projectId: string, itemId: string) => void;
@@ -588,6 +591,70 @@ export function AppStateProvider({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showToast]);
 
+  // Full edit — title, project, due date, recurrence, starred. `undefined`
+  // in the patch means "leave as-is"; `null` means "clear this field".
+  const updateTask = useCallback(
+    (id: string, patch: { title?: string; projectId?: string | null; dueDate?: string | null; recurrence?: string | null; starred?: boolean }) => {
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== id) return t;
+          const project = patch.projectId !== undefined
+            ? (patch.projectId ? projects.find((p) => p.id === patch.projectId) : undefined)
+            : undefined;
+          return {
+            ...t,
+            ...(patch.title !== undefined ? { title: patch.title } : {}),
+            ...(patch.projectId !== undefined
+              ? { projectId: patch.projectId ?? undefined, projectName: project?.name, projectColor: project?.color }
+              : {}),
+            ...(patch.dueDate !== undefined
+              ? { dueDate: patch.dueDate ?? undefined, dueLabel: patch.dueDate ? dueLabel(patch.dueDate) : undefined }
+              : {}),
+            ...(patch.recurrence !== undefined
+              ? { recurrence: patch.recurrence ?? undefined, recurring: !!patch.recurrence }
+              : {}),
+            ...(patch.starred !== undefined ? { starred: patch.starred } : {}),
+          };
+        }),
+      );
+
+      const dbPatch: Record<string, unknown> = {};
+      if (patch.title !== undefined) dbPatch.title = patch.title;
+      if (patch.projectId !== undefined) dbPatch.project_id = patch.projectId;
+      if (patch.dueDate !== undefined) dbPatch.due = patch.dueDate;
+      if (patch.recurrence !== undefined) dbPatch.recurrence = patch.recurrence;
+      if (patch.starred !== undefined) dbPatch.starred = patch.starred;
+
+      void supabase
+        .from("tasks")
+        .update(dbPatch)
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) {
+            console.error("Failed to update task", error);
+            showToast("Couldn't save — check your connection");
+            void loadTasks();
+          }
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projects, showToast]);
+
+  const deleteTask = useCallback((id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    void supabase
+      .from("tasks")
+      .delete()
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to delete task", error);
+          showToast("Couldn't save — check your connection");
+          void loadTasks();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
+
   const toggleRoutine = useCallback((id: string) => {
     const todayKey = new Date().toLocaleDateString("en-CA");
     setRoutines((prev) => prev.map((r) => (r.id === id ? { ...r, doneToday: !r.doneToday } : r)));
@@ -865,7 +932,7 @@ export function AppStateProvider({
     () => ({
       tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, logWater, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, addTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
+      toggleTaskDone, toggleTaskStar, addTask, updateTask, deleteTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, setLibFilter,
@@ -880,7 +947,7 @@ export function AppStateProvider({
     [
       tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, logWater, loading,
       refreshing, refreshAll,
-      toggleTaskDone, toggleTaskStar, addTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
+      toggleTaskDone, toggleTaskStar, addTask, updateTask, deleteTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, query,

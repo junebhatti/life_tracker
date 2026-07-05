@@ -10,6 +10,8 @@ export type Task = {
   dueLabel?: string;
   overdue?: boolean;
   recurring?: boolean;
+  /** Raw recurrence text (e.g. "Weekly"), editable — `recurring` is just its presence as a boolean. */
+  recurrence?: string;
 };
 
 export type AgendaEvent = {
