@@ -18,7 +18,8 @@ export function generateHealthInsights(
   const stepVals = days.map((d) => d.steps).filter((n): n is number => n != null);
   const hrVals = days.map((d) => d.restingHeartRate).filter((n): n is number => n != null);
 
-  // Last night's sleep vs recent average
+  // Last night's sleep vs recent average — skip the "holding steady" filler;
+  // it's not a real insight, just noise when nothing changed.
   if (health?.sleepHours != null && sleepVals.length >= 3) {
     const prior = sleepVals.slice(0, -1);
     const a = avg(prior);
@@ -28,28 +29,33 @@ export function generateHealthInsights(
         out.push(
           `Slept ${Math.abs(delta).toFixed(1)}h ${delta > 0 ? "more" : "less"} than your ${prior.length}-day average of ${a.toFixed(1)}h.`,
         );
-      } else {
-        out.push(`Sleep is holding steady around ${a.toFixed(1)}h a night.`);
       }
     }
   }
 
-  // Sleep-stage quality
+  // Sleep-stage quality — only one of REM/deep fires per night (whichever is
+  // more notable), so they don't crowd out other insights with two similar lines.
   const totalMin = (health?.sleepHours ?? 0) * 60;
+  let stagePushed = false;
   if (health?.remMinutes != null && totalMin > 0) {
     const pct = Math.round((health.remMinutes / totalMin) * 100);
-    if (pct >= 22) out.push(`Strong REM last night — ${pct}% of sleep (ideal ~20–25%).`);
-    else if (pct > 0 && pct < 15) out.push(`Low REM last night — only ${pct}% (aim for ~20–25%).`);
+    if (pct >= 22) {
+      out.push(`Strong REM last night, ${pct}% of total sleep.`);
+      stagePushed = true;
+    } else if (pct > 0 && pct < 15) {
+      out.push(`REM was low last night, just ${pct}% of total sleep (typical is 20–25%).`);
+      stagePushed = true;
+    }
   }
-  if (health?.deepMinutes != null && totalMin > 0) {
+  if (!stagePushed && health?.deepMinutes != null && totalMin > 0) {
     const pct = Math.round((health.deepMinutes / totalMin) * 100);
-    if (pct > 0 && pct < 12) out.push(`Deep sleep was light at ${pct}% — deep sleep drives physical recovery.`);
+    if (pct > 0 && pct < 12) out.push(`Deep sleep was light last night, just ${pct}% — that's the stage most tied to physical recovery.`);
   }
 
   // Efficiency
   if (health?.efficiency != null) {
-    if (health.efficiency >= 90) out.push(`High sleep efficiency (${Math.round(health.efficiency)}%) — little time awake in bed.`);
-    else if (health.efficiency < 80) out.push(`Sleep efficiency was ${Math.round(health.efficiency)}% — a restless night.`);
+    if (health.efficiency >= 90) out.push(`Slept efficiently — only briefly awake after falling asleep.`);
+    else if (health.efficiency < 80) out.push(`Restless night — awake more than usual while in bed.`);
   }
 
   // Steps trend
@@ -57,7 +63,7 @@ export function generateHealthInsights(
     const recent = avg(stepVals.slice(-3))!;
     const prior = avg(stepVals.slice(-7, -3))!;
     if (Math.abs(recent - prior) > 1500) {
-      out.push(`Steps trending ${recent > prior ? "up" : "down"} — averaging ${Math.round(recent).toLocaleString()}/day lately.`);
+      out.push(`Steps ${recent > prior ? "up" : "down"} this week, averaging ${Math.round(recent).toLocaleString()}/day.`);
     }
   }
 
@@ -66,12 +72,12 @@ export function generateHealthInsights(
     const recent = avg(hrVals.slice(-3))!;
     const prior = avg(hrVals.slice(-7, -3))!;
     const delta = recent - prior;
-    if (delta <= -2) out.push(`Resting heart rate down ${Math.abs(delta).toFixed(0)} bpm vs last week — a good recovery sign.`);
-    else if (delta >= 3) out.push(`Resting heart rate up ${delta.toFixed(0)} bpm vs last week — could signal fatigue or stress.`);
+    if (delta <= -2) out.push(`Resting heart rate down ${Math.abs(delta).toFixed(0)} bpm vs. last week — a good recovery sign.`);
+    else if (delta >= 3) out.push(`Resting heart rate up ${delta.toFixed(0)} bpm vs. last week, worth keeping an eye on.`);
   }
 
   if (out.length === 0) {
-    out.push("Insights sharpen as more days sync — check back after a few nights.");
+    out.push("Insights sharpen as more nights sync in — check back in a few days.");
   }
   return out.slice(0, 4);
 }
