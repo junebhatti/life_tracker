@@ -407,7 +407,12 @@ async function fetchNutritionToday(
   const nutrients = log.nutrients as Record<string, unknown> | undefined;
 
   const calories = readQuantity(log.energy, ["kcal", "kilocalories", "calories", "sum", "kcalSum"]);
+  // carbs/fat both live under a "total<Nutrient>" key (confirmed working) —
+  // protein should follow the same convention; the nutrients.protein/log.protein
+  // guesses below are kept as fallbacks in case a given account's payload shape
+  // differs, but totalProtein is the one that's actually been observed to work.
   const proteinGrams =
+    readQuantity(log.totalProtein, ["grams", "value", "amount", "sum", "gramsSum"]) ??
     readQuantity(nutrients?.protein, ["grams", "value", "amount", "sum", "gramsSum"]) ??
     readQuantity(log.protein, ["grams", "value", "amount", "sum", "gramsSum"]);
   const carbsGrams = readQuantity(log.totalCarbohydrate, ["grams", "value", "amount", "sum", "gramsSum"]);
