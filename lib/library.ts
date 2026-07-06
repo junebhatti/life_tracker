@@ -2,6 +2,8 @@
 // an Obsidian vault (read locally via the browser's folder picker) in as
 // Library entries, optionally linked to People.
 
+import type { PodcastMeta } from "./podcast";
+
 export type LibraryNote = {
   id: string;
   /** Path relative to the synced folder, e.g. "People/Calls/Jane Doe.md". */
@@ -30,6 +32,9 @@ export type LibraryNote = {
   personIds: string[];
   /** The source file's last-modified time, if known. */
   sourceModifiedAt?: string;
+  /** Present on podcast episodes (category "Podcasts"): source URL, cover art,
+   *  show, host. Stored in the library_notes.metadata jsonb column. */
+  metadata?: PodcastMeta;
   syncedAt: string;
   createdAt: string;
 };

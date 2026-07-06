@@ -11,6 +11,7 @@ import {
 import { useAuth } from "./AuthProvider";
 import { supabase } from "@/lib/supabase";
 import type { LibraryNote } from "@/lib/library";
+import type { PodcastMeta } from "@/lib/podcast";
 
 type LibraryNoteRow = {
   id: string;
@@ -25,6 +26,7 @@ type LibraryNoteRow = {
   category: string | null;
   person_ids: string[];
   source_modified_at: string | null;
+  metadata: PodcastMeta | null;
   synced_at: string;
   created_at: string;
   archived_at: string | null;
@@ -43,6 +45,7 @@ function fromRow(row: LibraryNoteRow): LibraryNote {
     category: row.category ?? undefined,
     personIds: row.person_ids ?? [],
     sourceModifiedAt: row.source_modified_at ?? undefined,
+    metadata: row.metadata ?? undefined,
     syncedAt: row.synced_at,
     createdAt: row.created_at,
   };
@@ -73,6 +76,14 @@ type LibraryStore = {
   editNote: (noteId: string, title: string, content: string) => void;
   addManualTag: (noteId: string, tag: string) => void;
   removeManualTag: (noteId: string, tag: string) => void;
+  /** Creates a podcast episode as a Library note (category "Podcasts").
+   *  Returns the new note id. */
+  addPodcastEpisode: (input: { title: string; meta: PodcastMeta; tags: string[] }) => string;
+  /** Patches a podcast episode's title/body/tags/metadata in place. */
+  savePodcastEpisode: (
+    noteId: string,
+    patch: { title?: string; content?: string; tags?: string[]; meta?: PodcastMeta },
+  ) => void;
 };
 
 const LibraryContext = createContext<LibraryStore | null>(null);
@@ -313,6 +324,84 @@ export function LibraryStoreProvider({
     [setManualTags],
   );
 
+  // Podcast episodes are Library notes (category "Podcasts"). They're app-native
+  // (not synced from Obsidian), so we write the primary title/content/tags
+  // columns directly rather than the manual_ overrides.
+  const addPodcastEpisode = useCallback(
+    (input: { title: string; meta: PodcastMeta; tags: string[] }) => {
+      const id = makeId();
+      const now = new Date().toISOString();
+      const title = input.title.trim() || "Untitled Episode";
+      const note: LibraryNote = {
+        id,
+        path: `podcast/${id}`,
+        title,
+        content: "",
+        tags: input.tags,
+        manualTags: [],
+        category: "Podcasts",
+        personIds: [],
+        metadata: input.meta,
+        syncedAt: now,
+        createdAt: now,
+      };
+      setNotes((prev) => [note, ...prev]);
+      if (user) {
+        supabase
+          .from("library_notes")
+          .insert({
+            id,
+            user_id: user.id,
+            path: `podcast/${id}`,
+            title,
+            content: "",
+            tags: input.tags,
+            manual_tags: [],
+            category: "Podcasts",
+            metadata: input.meta,
+          })
+          .then(({ error }) => {
+            if (error) console.error("Failed to add podcast episode", error);
+          });
+      }
+      return id;
+    },
+    [user],
+  );
+
+  const savePodcastEpisode = useCallback(
+    (noteId: string, patch: { title?: string; content?: string; tags?: string[]; meta?: PodcastMeta }) => {
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === noteId
+            ? {
+                ...n,
+                title: patch.title !== undefined ? patch.title.trim() || "Untitled Episode" : n.title,
+                content: patch.content !== undefined ? patch.content : n.content,
+                tags: patch.tags !== undefined ? patch.tags : n.tags,
+                metadata: patch.meta !== undefined ? patch.meta : n.metadata,
+              }
+            : n,
+        ),
+      );
+      if (!user) return;
+      const db: Record<string, unknown> = {};
+      if (patch.title !== undefined) db.title = patch.title.trim() || "Untitled Episode";
+      if (patch.content !== undefined) db.content = patch.content;
+      if (patch.tags !== undefined) db.tags = patch.tags;
+      if (patch.meta !== undefined) db.metadata = patch.meta;
+      if (Object.keys(db).length === 0) return;
+      supabase
+        .from("library_notes")
+        .update(db)
+        .eq("id", noteId)
+        .then(({ error }) => {
+          if (error) console.error("Failed to save podcast episode", error);
+        });
+    },
+    [user],
+  );
+
   return (
     <LibraryContext.Provider
       value={{
@@ -323,6 +412,8 @@ export function LibraryStoreProvider({
         editNote,
         addManualTag,
         removeManualTag,
+        addPodcastEpisode,
+        savePodcastEpisode,
       }}
     >
       {children}
