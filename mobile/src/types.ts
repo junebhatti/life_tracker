@@ -129,3 +129,9 @@ export type HealthHistoryDay = {
   restingHeartRate: number | null;
   steps: number | null;
 };
+
+/** One day of history from /api/water/history, for the water habit graph. */
+export type WaterHistoryDay = {
+  date: string;
+  totalMl: number;
+};

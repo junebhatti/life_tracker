@@ -35,6 +35,7 @@ import type {
   Routine,
   ScrapItem,
   Task,
+  WaterHistoryDay,
 } from "../types";
 
 
@@ -171,6 +172,7 @@ type AppStateValue = {
   health: HealthData | null;
   healthHistory: HealthHistoryDay[];
   water: number;
+  waterHistory: WaterHistoryDay[];
   logWater: (amountMl: number) => void;
   loading: boolean;
   refreshing: boolean;
@@ -245,6 +247,7 @@ export function AppStateProvider({
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthHistory, setHealthHistory] = useState<HealthHistoryDay[]>([]);
   const [water, setWater] = useState(0);
+  const [waterHistory, setWaterHistory] = useState<WaterHistoryDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -279,6 +282,7 @@ export function AppStateProvider({
       loadHealth(),
       loadHealthHistory(),
       loadWater(),
+      loadWaterHistory(),
     ]);
     setLoading(false);
   }
@@ -452,6 +456,23 @@ export function AppStateProvider({
     }
   }
 
+  async function loadWaterHistory() {
+    if (!API_URL && Platform.OS !== "web") return;
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      const res = await fetch(`${API_URL}/api/water/history?t=${Date.now()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as { days?: WaterHistoryDay[] };
+      if (Array.isArray(json.days)) setWaterHistory(json.days);
+    } catch {
+      // offline or unauthorized — leave empty
+    }
+  }
+
   // Re-pull everything without clearing the screen (used by the manual Sync
   // button and by the foreground refetch below).
   const refreshAll = useCallback(async () => {
@@ -467,6 +488,7 @@ export function AppStateProvider({
       loadHealth(),
       loadHealthHistory(),
       loadWater(),
+      loadWaterHistory(),
     ]);
     setRefreshing(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -504,16 +526,27 @@ export function AppStateProvider({
   // conversion (oz -> mL) happens in the UI before this is called.
   const logWater = useCallback((amountMl: number) => {
     if (!(amountMl > 0)) return;
+    const loggedAt = new Date().toISOString();
     setWater((prev) => prev + amountMl);
+    // Keep the habit-tracker graph's "today" bar in sync without waiting for a refetch.
+    setWaterHistory((prev) => {
+      const today = loggedAt.slice(0, 10);
+      const idx = prev.findIndex((d) => d.date === today);
+      if (idx === -1) return [...prev, { date: today, totalMl: amountMl }];
+      const next = [...prev];
+      next[idx] = { ...next[idx], totalMl: next[idx].totalMl + amountMl };
+      return next;
+    });
     const id = `w${Date.now()}`;
     void supabase
       .from("water_logs")
-      .insert({ id, user_id: userId, amount_ml: amountMl, logged_at: new Date().toISOString() })
+      .insert({ id, user_id: userId, amount_ml: amountMl, logged_at: loggedAt })
       .then(({ error }) => {
         if (error) {
           console.error("Failed to log water", error);
           showToast("Couldn't save — check your connection");
           void loadWater();
+          void loadWaterHistory();
         }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -931,7 +964,7 @@ export function AppStateProvider({
 
   const value = useMemo<AppStateValue>(
     () => ({
-      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, logWater, loading,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, waterHistory, logWater, loading,
       refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, addTask, updateTask, deleteTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
@@ -946,7 +979,7 @@ export function AppStateProvider({
       signOut,
     }),
     [
-      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, logWater, loading,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, waterHistory, logWater, loading,
       refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, addTask, updateTask, deleteTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,

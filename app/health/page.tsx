@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import TrendChart from "@/components/TrendChart";
 import NutritionRings, { type Nutrition } from "@/components/NutritionRings";
 import WaterTracker from "@/components/WaterTracker";
+import WaterHistoryChart, { type WaterHistoryDay } from "@/components/WaterHistoryChart";
 import { useAuth } from "@/components/AuthProvider";
 
 type SleepStages = {
@@ -40,6 +41,8 @@ type HealthMetricsDay = {
 };
 
 type HistoryResponse = { days?: HealthMetricsDay[]; error?: string };
+
+type WaterHistoryResponse = { days?: WaterHistoryDay[]; error?: string };
 
 function average(values: number[]): number | undefined {
   if (values.length === 0) return undefined;
@@ -188,6 +191,7 @@ export default function HealthPage() {
 
   const [snapshotState, setSnapshotState] = useState<SnapshotResponse | null>(null);
   const [historyState, setHistoryState] = useState<HistoryResponse | null>(null);
+  const [waterHistoryState, setWaterHistoryState] = useState<WaterHistoryResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,9 +227,28 @@ export default function HealthPage() {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetch("/api/water/history", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json())
+      .then((data: WaterHistoryResponse) => {
+        if (!cancelled) setWaterHistoryState(data);
+      })
+      .catch(() => {
+        if (!cancelled) setWaterHistoryState({ error: "Couldn't load water history." });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const snapshot = snapshotState?.snapshot;
   const historyLoading = historyState === null && Boolean(token);
   const historyError = historyState?.error;
+  const waterDays = waterHistoryState?.days ?? [];
+  const waterHistoryLoading = waterHistoryState === null && Boolean(token);
+  const waterHistoryError = waterHistoryState?.error;
 
   const sleepPoints = useMemo(
     () =>
@@ -295,6 +318,21 @@ export default function HealthPage() {
 
               {/* Water — logged directly in-app, not from Google Health */}
               <WaterTracker />
+
+              <section className="border-t border-border pt-8">
+                <p className="text-[11px] uppercase tracking-wider text-muted">Water · Last 30 days</p>
+                <div className="mt-6">
+                  {waterHistoryLoading && <div className="h-32 animate-pulse rounded-lg bg-hover" />}
+                  {waterHistoryError && <p className="text-sm text-muted">{waterHistoryError}</p>}
+                  {!waterHistoryLoading && !waterHistoryError && waterDays.length === 0 && (
+                    <p className="text-sm text-muted">
+                      No history yet — log some water on a few different days and a trend will appear
+                      here.
+                    </p>
+                  )}
+                  {waterDays.length > 0 && <WaterHistoryChart days={waterDays} />}
+                </div>
+              </section>
 
               {/* Sleep */}
               <MetricSection

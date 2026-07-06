@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import Svg, { Circle, Rect } from "react-native-svg";
+import Svg, { Circle, Line, Rect } from "react-native-svg";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import { generateHealthInsights } from "../lib/healthInsights";
 import { ozToMl, mlToLiters } from "../lib/water";
-import type { HealthHistoryDay } from "../types";
+import type { HealthHistoryDay, WaterHistoryDay } from "../types";
 
 const WATER_TARGET_ML = 2000;
 
@@ -131,12 +131,67 @@ function Sparkline({ label, values, color, decimals = 0 }: { label: string; valu
   );
 }
 
+// ── water history ──────────────────────────────────────────────────────────────
+// Habit-tracker style bar chart: one bar per day, colored by whether that
+// day's total crossed the 2L baseline (drawn as a dashed reference line).
+
+const WATER_DAYS_SHOWN = 30;
+
+function WaterHistoryChart({ days }: { days: WaterHistoryDay[] }) {
+  const recent = days.slice(-WATER_DAYS_SHOWN);
+  if (recent.length === 0) {
+    return <Text style={styles.noData}>No history yet — log water on a few different days.</Text>;
+  }
+
+  const width = 300;
+  const height = 80;
+  const padding = 4;
+  const maxMl = Math.max(WATER_TARGET_ML, ...recent.map((d) => d.totalMl)) * 1.1;
+  const barSlot = (width - padding * 2) / recent.length;
+  const baselineY = height - padding - (WATER_TARGET_ML / maxMl) * (height - padding * 2);
+  const hitCount = recent.filter((d) => d.totalMl >= WATER_TARGET_ML).length;
+
+  return (
+    <View>
+      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        <Line
+          x1={padding}
+          x2={width - padding}
+          y1={baselineY}
+          y2={baselineY}
+          stroke={colors.textTertiary}
+          strokeWidth={1}
+          strokeDasharray="4 3"
+        />
+        {recent.map((d, i) => {
+          const barHeight = Math.max(2, (d.totalMl / maxMl) * (height - padding * 2));
+          const x = padding + i * barSlot;
+          const y = height - padding - barHeight;
+          const met = d.totalMl >= WATER_TARGET_ML;
+          return (
+            <Rect
+              key={d.date}
+              x={x + barSlot * 0.15}
+              y={y}
+              width={Math.max(1, barSlot * 0.7)}
+              height={barHeight}
+              rx={1.5}
+              fill={met ? "#0891b2" : colors.border}
+            />
+          );
+        })}
+      </Svg>
+      <Text style={styles.sparkValue}>{`${hitCount} of ${recent.length} days ≥ 2L`}</Text>
+    </View>
+  );
+}
+
 // ── water tracker ──────────────────────────────────────────────────────────────
 // Logged straight from the app (not sourced from Fitbit) — the 9oz/12oz
 // glasses used at home, or a custom amount.
 
 function WaterSection() {
-  const { water, logWater } = useAppState();
+  const { water, waterHistory, logWater } = useAppState();
   const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState("");
   const [customUnit, setCustomUnit] = useState<"oz" | "ml">("oz");
@@ -203,6 +258,10 @@ function WaterSection() {
           </Pressable>
         </View>
       ) : null}
+      <Text style={[styles.subheader, { marginTop: 20 }]}>Water · Last 30 Days</Text>
+      <View style={{ marginTop: 8 }}>
+        <WaterHistoryChart days={waterHistory} />
+      </View>
     </>
   );
 }
