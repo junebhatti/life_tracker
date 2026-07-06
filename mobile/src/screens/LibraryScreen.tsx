@@ -1,11 +1,32 @@
-import React from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useState } from "react";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { colors, fonts, radius } from "../theme";
 import { useAppState } from "../state/AppState";
 import PageHeader from "../components/PageHeader";
 import NoteEditor from "../components/NoteEditor";
 import type { LibraryFilter, LibraryNote } from "../types";
+
+/** Podcast cover art for a Library row, with a graceful ♪ fallback. */
+function NoteCover({ url, size }: { url: string; size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <View style={[styles.coverFallback, { width: size, height: size }]}>
+        <Text style={{ color: colors.textTertiary, fontFamily: fonts.serif, fontSize: size * 0.4 }}>♪</Text>
+      </View>
+    );
+  }
+  return (
+    // eslint-disable-next-line jsx-a11y/alt-text -- react-native Image has no alt prop
+    <Image
+      source={{ uri: url }}
+      accessibilityLabel="Podcast cover art"
+      style={{ width: size, height: size, borderRadius: 6, backgroundColor: colors.border }}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 const FILTERS: LibraryFilter[] = ["All", "Notes", "Quotes", "Journal", "Books", "Inventory", "Podcasts", "People"];
 
@@ -93,26 +114,35 @@ export default function LibraryScreen() {
       ) : (
         filteredNotes.map((n) => (
           <Pressable key={n.id} style={styles.noteRow} onPress={() => openNote(n.id)}>
-            <View style={styles.noteHeader}>
-              <View style={styles.noteHeaderLeft}>
-                <Text style={styles.noteLabel}>{n.label}</Text>
-                {n.sub ? <Text style={styles.noteSub}>{` · ${n.sub}`}</Text> : null}
-              </View>
-              <View style={styles.noteHeaderRight}>
-                <Text style={styles.noteDate}>{n.date}</Text>
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); confirmDelete(n); }}
-                  hitSlop={8}
-                  style={styles.deleteBtn}
-                >
-                  <TrashIcon />
-                </Pressable>
-                <Text style={styles.noteChevron}>›</Text>
+            <View style={styles.noteRowInner}>
+              {n.metadata?.coverUrl ? <NoteCover url={n.metadata.coverUrl} size={48} /> : null}
+              <View style={styles.noteRowBody}>
+                <View style={styles.noteHeader}>
+                  <View style={styles.noteHeaderLeft}>
+                    <Text style={styles.noteLabel}>{n.label}</Text>
+                    {n.metadata?.show ? (
+                      <Text style={styles.noteSub}>{` · ${n.metadata.show}`}</Text>
+                    ) : n.sub ? (
+                      <Text style={styles.noteSub}>{` · ${n.sub}`}</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.noteHeaderRight}>
+                    <Text style={styles.noteDate}>{n.date}</Text>
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation(); confirmDelete(n); }}
+                      hitSlop={8}
+                      style={styles.deleteBtn}
+                    >
+                      <TrashIcon />
+                    </Pressable>
+                    <Text style={styles.noteChevron}>›</Text>
+                  </View>
+                </View>
+                <Text style={styles.noteBody} numberOfLines={3}>
+                  {n.body || (n.metadata ? "No notes yet — tap to add." : "")}
+                </Text>
               </View>
             </View>
-            <Text style={styles.noteBody} numberOfLines={3}>
-              {n.body}
-            </Text>
           </Pressable>
         ))
       )}
@@ -196,6 +226,20 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  noteRowInner: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  noteRowBody: {
+    flex: 1,
+  },
+  coverFallback: {
+    borderRadius: 6,
+    backgroundColor: colors.chipBg,
+    alignItems: "center",
+    justifyContent: "center",
   },
   noteHeader: {
     flexDirection: "row",

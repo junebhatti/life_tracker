@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useLibrary } from "@/components/LibraryStore";
 import { usePeople } from "@/components/PeopleStore";
+import { sourceLabel } from "@/lib/podcast";
 
 const ALL_CATEGORY = "All";
 const PEOPLE_CATEGORY = "People";
@@ -13,6 +15,33 @@ function formatNoteDate(value: string): string {
   return new Date(value)
     .toLocaleDateString("en-US", { month: "short", day: "numeric" })
     .toUpperCase();
+}
+
+/** Podcast cover art for a Library note, with a graceful fallback. */
+function CoverThumb({ url, size }: { url: string; size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div
+        className="flex shrink-0 items-center justify-center rounded bg-hover text-muted"
+        style={{ width: size, height: size, fontSize: size * 0.4 }}
+      >
+        ♪
+      </div>
+    );
+  }
+  return (
+    <Image
+      src={url}
+      alt="Podcast cover art"
+      width={size}
+      height={size}
+      unoptimized
+      onError={() => setFailed(true)}
+      className="shrink-0 rounded object-cover"
+      style={{ width: size, height: size }}
+    />
+  );
 }
 
 export default function LibraryPage() {
@@ -182,6 +211,9 @@ export default function LibraryPage() {
                     className="group border-b border-border py-3"
                   >
                     <div className="flex items-start gap-3">
+                      {note.metadata?.coverUrl && (
+                        <CoverThumb url={note.metadata.coverUrl} size={44} />
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -275,9 +307,25 @@ export default function LibraryPage() {
                           </div>
                         ) : (
                           <div className="flex flex-col gap-2">
+                            {note.metadata?.coverUrl && (
+                              <CoverThumb url={note.metadata.coverUrl} size={120} />
+                            )}
                             <h2 className="font-serif text-xl font-medium tracking-tight text-foreground">
                               {title}
                             </h2>
+                            {note.metadata?.show && (
+                              <p className="text-xs text-muted">{note.metadata.show}</p>
+                            )}
+                            {note.metadata?.sourceUrl && (
+                              <a
+                                href={note.metadata.sourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="self-start text-[11px] font-medium uppercase tracking-wider text-accent hover:underline"
+                              >
+                                Open in {sourceLabel(note.metadata.sourceUrl)} ↗
+                              </a>
+                            )}
                             <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                               {content}
                             </p>
