@@ -404,28 +404,38 @@ async function fetchNutritionToday(
   if (!point) return undefined;
 
   const log = (point.nutritionLog ?? point) as Record<string, unknown>;
-  const nutrients = log.nutrients as Record<string, unknown> | undefined;
+  // Confirmed from a live payload: log.nutrients is an ARRAY (of 3 entries),
+  // not an object with named fields — so `nutrients.protein` could never work.
+  const nutrientsArr: unknown[] = Array.isArray(log.nutrients) ? (log.nutrients as unknown[]) : [];
 
   const calories = readQuantity(log.energy, ["kcal", "kilocalories", "calories", "sum", "kcalSum"]);
-  // carbs/fat both live under a "total<Nutrient>" key (confirmed working) —
-  // protein should follow the same convention; the nutrients.protein/log.protein
-  // guesses below are kept as fallbacks in case a given account's payload shape
-  // differs, but totalProtein is the one that's actually been observed to work.
+  // Look for whichever array entry represents protein — try a few likely
+  // shapes ({ nutrient: "protein", quantity }, { name: "protein", grams }, a
+  // bare quantity, etc.) without assuming which one is right yet.
+  function findProteinInArray(): number | undefined {
+    for (const entry of nutrientsArr) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      const label = String(e.nutrient ?? e.name ?? e.type ?? e.nutrientType ?? "").toLowerCase();
+      if (!label.includes("protein")) continue;
+      const found = readQuantity(e.quantity ?? e.value ?? e.amount ?? e, ["grams", "value", "amount", "sum", "gramsSum"]);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
   const proteinGrams =
     readQuantity(log.totalProtein, ["grams", "value", "amount", "sum", "gramsSum"]) ??
-    readQuantity(nutrients?.protein, ["grams", "value", "amount", "sum", "gramsSum"]) ??
+    findProteinInArray() ??
     readQuantity(log.protein, ["grams", "value", "amount", "sum", "gramsSum"]);
   const carbsGrams = readQuantity(log.totalCarbohydrate, ["grams", "value", "amount", "sum", "gramsSum"]);
   const fatGrams = readQuantity(log.totalFat, ["grams", "value", "amount", "sum", "gramsSum"]);
 
-  // totalProtein was a guess (carbs/fat's confirmed keys suggested the same
-  // "total<Nutrient>" pattern) and it's apparently still wrong. Rather than
-  // guess a third time, log the actual keys so the real field name shows up
-  // in Vercel's function logs next time this runs.
+  // Still not resolved — dump the actual array contents (not just its
+  // indices) so the real shape is visible in Vercel's function logs.
   if (proteinGrams === undefined) {
     console.error(
-      "Nutrition protein still unresolved — actual payload keys:",
-      JSON.stringify({ logKeys: Object.keys(log), nutrientsKeys: nutrients ? Object.keys(nutrients) : null }),
+      "Nutrition protein still unresolved — nutrients array contents:",
+      JSON.stringify({ logKeys: Object.keys(log), nutrients: nutrientsArr }),
     );
   }
 
