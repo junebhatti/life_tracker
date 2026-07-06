@@ -20,6 +20,12 @@ function makeId(): string {
   return `w_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+type WaterEntry = { id: string; amountMl: number; loggedAt: string };
+
+function formatClockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 /** Water intake ring + quick-log buttons for the 9oz/12oz glasses at home,
  *  plus a custom amount (oz or mL). Lives right under the Nutrition rings on
  *  the Health page — same visual language (progress ring, value/target inside). */
@@ -27,7 +33,7 @@ export default function WaterTracker() {
   const { user } = useAuth();
   const userId = user?.id;
 
-  const [ml, setMl] = useState<number | null>(null);
+  const [entries, setEntries] = useState<WaterEntry[] | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState("");
   const [customUnit, setCustomUnit] = useState<"oz" | "ml">("oz");
@@ -37,16 +43,23 @@ export default function WaterTracker() {
     let cancelled = false;
     supabase
       .from("water_logs")
-      .select("amount_ml")
+      .select("id, amount_ml, logged_at")
       .eq("user_id", userId)
       .gte("logged_at", startOfDayIso())
+      .order("logged_at", { ascending: false })
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
           console.error("Failed to load water intake", error);
           return;
         }
-        setMl((data ?? []).reduce((sum, row) => sum + Number(row.amount_ml), 0));
+        setEntries(
+          (data ?? []).map((row) => ({
+            id: String(row.id),
+            amountMl: Number(row.amount_ml),
+            loggedAt: String(row.logged_at),
+          })),
+        );
       });
     return () => {
       cancelled = true;
@@ -55,14 +68,27 @@ export default function WaterTracker() {
 
   async function logWaterMl(amountMl: number) {
     if (!userId || !(amountMl > 0)) return;
-    const prevMl = ml ?? 0;
-    setMl(prevMl + amountMl);
+    const id = makeId();
+    const loggedAt = new Date().toISOString();
+    const prevEntries = entries ?? [];
+    setEntries([{ id, amountMl, loggedAt }, ...prevEntries]);
     const { error } = await supabase
       .from("water_logs")
-      .insert({ id: makeId(), user_id: userId, amount_ml: amountMl, logged_at: new Date().toISOString() });
+      .insert({ id, user_id: userId, amount_ml: amountMl, logged_at: loggedAt });
     if (error) {
       console.error("Failed to log water", error);
-      setMl(prevMl);
+      setEntries(prevEntries);
+    }
+  }
+
+  async function deleteEntry(id: string) {
+    if (!userId) return;
+    const prevEntries = entries ?? [];
+    setEntries(prevEntries.filter((e) => e.id !== id));
+    const { error } = await supabase.from("water_logs").delete().eq("id", id).eq("user_id", userId);
+    if (error) {
+      console.error("Failed to delete water entry", error);
+      setEntries(prevEntries);
     }
   }
 
@@ -74,6 +100,7 @@ export default function WaterTracker() {
     setCustomOpen(false);
   }
 
+  const ml = entries ? entries.reduce((sum, e) => sum + e.amountMl, 0) : null;
   const liters = mlToLiters(ml ?? 0);
   const targetLiters = mlToLiters(WATER_TARGET_ML);
 
@@ -147,6 +174,26 @@ export default function WaterTracker() {
           >
             Log
           </button>
+        </div>
+      )}
+
+      {entries && entries.length > 0 && (
+        <div className="mt-4 flex flex-col gap-1.5">
+          {entries.map((e) => (
+            <div key={e.id} className="flex items-center justify-between text-xs text-muted">
+              <span>
+                {formatClockTime(e.loggedAt)} · {Math.round(e.amountMl)} mL
+              </span>
+              <button
+                type="button"
+                onClick={() => void deleteEntry(e.id)}
+                aria-label="Delete this entry"
+                className="rounded px-1.5 text-muted transition-colors hover:text-foreground"
+              >
+                ×
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </section>

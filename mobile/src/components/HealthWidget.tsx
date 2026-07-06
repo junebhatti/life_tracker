@@ -190,8 +190,12 @@ function WaterHistoryChart({ days }: { days: WaterHistoryDay[] }) {
 // Logged straight from the app (not sourced from Fitbit) — the 9oz/12oz
 // glasses used at home, or a custom amount.
 
+function formatClockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 function WaterSection() {
-  const { water, waterHistory, logWater } = useAppState();
+  const { water, waterHistory, waterEntries, logWater, deleteWaterEntry } = useAppState();
   const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState("");
   const [customUnit, setCustomUnit] = useState<"oz" | "ml">("oz");
@@ -258,6 +262,22 @@ function WaterSection() {
           </Pressable>
         </View>
       ) : null}
+      {waterEntries.length > 0 && (
+        <View style={{ marginTop: 10 }}>
+          {waterEntries.map((e) => (
+            <View key={e.id} style={styles.waterEntryRow}>
+              <Text style={styles.waterEntryText}>{`${formatClockTime(e.loggedAt)} · ${Math.round(e.amountMl)} mL`}</Text>
+              <Pressable
+                style={styles.waterEntryDelete}
+                onPress={() => deleteWaterEntry(e.id)}
+                hitSlop={8}
+              >
+                <Text style={styles.waterEntryDeleteText}>×</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
       <Text style={[styles.subheader, { marginTop: 20 }]}>Water · Last 30 Days</Text>
       <View style={{ marginTop: 8 }}>
         <WaterHistoryChart days={waterHistory} />
@@ -536,4 +556,13 @@ const styles = StyleSheet.create({
   unitBtnActive: { backgroundColor: colors.surfaceDark },
   unitBtnText: { fontFamily: fonts.monoMedium, fontSize: 10.5, color: colors.textSecondary },
   unitBtnTextActive: { color: "#fff" },
+  waterEntryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  waterEntryText: { fontFamily: fonts.sans, fontSize: 12.5, color: colors.textSecondary },
+  waterEntryDelete: { paddingHorizontal: 8, paddingVertical: 2 },
+  waterEntryDeleteText: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.textTertiary },
 });

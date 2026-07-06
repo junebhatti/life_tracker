@@ -135,3 +135,10 @@ export type WaterHistoryDay = {
   date: string;
   totalMl: number;
 };
+
+/** One logged glass/amount from today, so a mis-tap can be deleted individually. */
+export type WaterEntry = {
+  id: string;
+  amountMl: number;
+  loggedAt: string;
+};

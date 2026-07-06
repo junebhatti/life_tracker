@@ -35,6 +35,7 @@ import type {
   Routine,
   ScrapItem,
   Task,
+  WaterEntry,
   WaterHistoryDay,
 } from "../types";
 
@@ -173,7 +174,9 @@ type AppStateValue = {
   healthHistory: HealthHistoryDay[];
   water: number;
   waterHistory: WaterHistoryDay[];
+  waterEntries: WaterEntry[];
   logWater: (amountMl: number) => void;
+  deleteWaterEntry: (id: string) => void;
   loading: boolean;
   refreshing: boolean;
   refreshAll: () => Promise<void>;
@@ -248,6 +251,7 @@ export function AppStateProvider({
   const [healthHistory, setHealthHistory] = useState<HealthHistoryDay[]>([]);
   const [water, setWater] = useState(0);
   const [waterHistory, setWaterHistory] = useState<WaterHistoryDay[]>([]);
+  const [waterEntries, setWaterEntries] = useState<WaterEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -298,10 +302,15 @@ export function AppStateProvider({
   async function loadWater() {
     const { data } = await supabase
       .from("water_logs")
-      .select("amount_ml")
+      .select("id, amount_ml, logged_at")
       .eq("user_id", userId)
-      .gte("logged_at", startOfDayIso());
-    if (data) setWater((data as { amount_ml: number }[]).reduce((sum, r) => sum + Number(r.amount_ml), 0));
+      .gte("logged_at", startOfDayIso())
+      .order("logged_at", { ascending: false });
+    if (data) {
+      const rows = data as { id: string; amount_ml: number; logged_at: string }[];
+      setWater(rows.reduce((sum, r) => sum + Number(r.amount_ml), 0));
+      setWaterEntries(rows.map((r) => ({ id: r.id, amountMl: Number(r.amount_ml), loggedAt: r.logged_at })));
+    }
   }
 
   async function loadTasks() {
@@ -527,7 +536,9 @@ export function AppStateProvider({
   const logWater = useCallback((amountMl: number) => {
     if (!(amountMl > 0)) return;
     const loggedAt = new Date().toISOString();
+    const id = `w${Date.now()}`;
     setWater((prev) => prev + amountMl);
+    setWaterEntries((prev) => [{ id, amountMl, loggedAt }, ...prev]);
     // Keep the habit-tracker graph's "today" bar in sync without waiting for a refetch.
     setWaterHistory((prev) => {
       const today = loggedAt.slice(0, 10);
@@ -537,7 +548,6 @@ export function AppStateProvider({
       next[idx] = { ...next[idx], totalMl: next[idx].totalMl + amountMl };
       return next;
     });
-    const id = `w${Date.now()}`;
     void supabase
       .from("water_logs")
       .insert({ id, user_id: userId, amount_ml: amountMl, logged_at: loggedAt })
@@ -545,6 +555,41 @@ export function AppStateProvider({
         if (error) {
           console.error("Failed to log water", error);
           showToast("Couldn't save — check your connection");
+          void loadWater();
+          void loadWaterHistory();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, showToast]);
+
+  // Delete a single logged entry (undo a mis-tap) — updates today's total and
+  // the habit-tracker graph's "today" bar immediately, no refetch needed.
+  const deleteWaterEntry = useCallback((id: string) => {
+    let removed: WaterEntry | undefined;
+    setWaterEntries((prev) => {
+      removed = prev.find((e) => e.id === id);
+      return prev.filter((e) => e.id !== id);
+    });
+    if (!removed) return;
+    const amountMl = removed.amountMl;
+    setWater((prev) => Math.max(0, prev - amountMl));
+    setWaterHistory((prev) => {
+      const today = removed!.loggedAt.slice(0, 10);
+      const idx = prev.findIndex((d) => d.date === today);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], totalMl: Math.max(0, next[idx].totalMl - amountMl) };
+      return next;
+    });
+    void supabase
+      .from("water_logs")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to delete water entry", error);
+          showToast("Couldn't delete — check your connection");
           void loadWater();
           void loadWaterHistory();
         }
@@ -964,7 +1009,7 @@ export function AppStateProvider({
 
   const value = useMemo<AppStateValue>(
     () => ({
-      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, waterHistory, logWater, loading,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, waterHistory, waterEntries, logWater, deleteWaterEntry, loading,
       refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, addTask, updateTask, deleteTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
@@ -979,7 +1024,7 @@ export function AppStateProvider({
       signOut,
     }),
     [
-      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, waterHistory, logWater, loading,
+      tasks, notes, projects, people, agenda, scrapItems, routines, health, healthHistory, water, waterHistory, waterEntries, logWater, deleteWaterEntry, loading,
       refreshing, refreshAll,
       toggleTaskDone, toggleTaskStar, addTask, updateTask, deleteTask, toggleRoutine, toggleMilestone, toggleChecklistItem, addMilestone, addChecklistItem, addProject, addActivity,
       healthExpanded, toggleHealthExpanded,
