@@ -1,6 +1,7 @@
 "use client";
 
-import { NUTRITION_TARGETS, WATER_TARGET_OZ } from "@/lib/nutritionTargets";
+import { NUTRITION_TARGETS, WATER_TARGET_ML } from "@/lib/nutritionTargets";
+import { mlToLiters } from "@/lib/water";
 
 export type Nutrition = {
   calories?: number;
@@ -58,18 +59,23 @@ function MacroRing({
   target,
   color,
   unit = "g",
+  format,
 }: {
   label: string;
   value: number;
   target: number;
   color: string;
   unit?: string;
+  /** Override for the center label — used by water, which shows liters (1 decimal) instead of a rounded whole number. */
+  format?: (value: number) => string;
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <div className="relative flex items-center justify-center">
         <Ring size={56} stroke={6} value={value} target={target} color={color} />
-        <span className="absolute text-xs font-medium text-foreground">{Math.round(value)}{unit}</span>
+        <span className="absolute text-xs font-medium text-foreground">
+          {format ? format(value) : `${Math.round(value)}${unit}`}
+        </span>
       </div>
       <span className="text-[10px] uppercase tracking-wide text-muted">{label}</span>
     </div>
@@ -77,9 +83,9 @@ function MacroRing({
 }
 
 /** Calorie ring + protein/carbs/fat macro rings against the daily targets. Presentational only.
- *  `waterOz`, when provided, adds a 4th ring for today's logged water (a separate,
+ *  `waterMl`, when provided, adds a 4th ring for today's logged water (a separate,
  *  in-app-only data source from the Google Health-sourced nutrition). */
-export default function NutritionRings({ nutrition, waterOz }: { nutrition?: Nutrition; waterOz?: number }) {
+export default function NutritionRings({ nutrition, waterMl }: { nutrition?: Nutrition; waterMl?: number }) {
   const calories = nutrition?.calories ?? 0;
   const protein = nutrition?.proteinGrams ?? 0;
   const carbs = nutrition?.carbsGrams ?? 0;
@@ -105,8 +111,14 @@ export default function NutritionRings({ nutrition, waterOz }: { nutrition?: Nut
         <MacroRing label="Protein" value={protein} target={NUTRITION_TARGETS.proteinGrams} color="#3b82f6" />
         <MacroRing label="Carbs" value={carbs} target={NUTRITION_TARGETS.carbsGrams} color="#22c55e" />
         <MacroRing label="Fat" value={fat} target={NUTRITION_TARGETS.fatGrams} color="#eab308" />
-        {waterOz !== undefined && (
-          <MacroRing label="Water" value={waterOz} target={WATER_TARGET_OZ} color="#0891b2" unit="oz" />
+        {waterMl !== undefined && (
+          <MacroRing
+            label="Water"
+            value={waterMl}
+            target={WATER_TARGET_ML}
+            color="#0891b2"
+            format={(v) => `${mlToLiters(v).toFixed(1)}L`}
+          />
         )}
       </div>
     </div>

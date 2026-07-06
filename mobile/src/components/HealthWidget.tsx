@@ -4,9 +4,10 @@ import Svg, { Circle, Rect } from "react-native-svg";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import { generateHealthInsights } from "../lib/healthInsights";
+import { ozToMl, mlToLiters } from "../lib/water";
 import type { HealthHistoryDay } from "../types";
 
-const WATER_TARGET_OZ = 100;
+const WATER_TARGET_ML = 2000;
 
 function fmt1(n: number | undefined): string {
   return n !== undefined ? n.toFixed(1) : "—";
@@ -138,28 +139,32 @@ function WaterSection() {
   const { water, logWater } = useAppState();
   const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState("");
+  const [customUnit, setCustomUnit] = useState<"oz" | "ml">("oz");
 
   function submitCustom() {
-    const oz = Number(customValue);
-    if (!oz || oz <= 0) return;
-    logWater(oz);
+    const amount = Number(customValue);
+    if (!amount || amount <= 0) return;
+    logWater(customUnit === "oz" ? ozToMl(amount) : amount);
     setCustomValue("");
     setCustomOpen(false);
   }
+
+  const liters = mlToLiters(water);
+  const targetLiters = mlToLiters(WATER_TARGET_ML);
 
   return (
     <>
       <Text style={[styles.subheader, { marginTop: 28 }]}>Water · Today</Text>
       <View style={styles.nutritionRow}>
-        <ProgressRing size={76} stroke={7} value={water} target={WATER_TARGET_OZ} color="#0891b2">
-          <Text style={styles.ringValue}>{fmtInt(water)}</Text>
-          <Text style={styles.ringUnit}>{`/${WATER_TARGET_OZ} oz`}</Text>
+        <ProgressRing size={76} stroke={7} value={water} target={WATER_TARGET_ML} color="#0891b2">
+          <Text style={styles.ringValue}>{liters.toFixed(2)}</Text>
+          <Text style={styles.ringUnit}>{`/${targetLiters.toFixed(1)} L`}</Text>
         </ProgressRing>
         <View style={styles.waterButtons}>
-          <Pressable style={styles.waterBtn} onPress={() => logWater(9)}>
+          <Pressable style={styles.waterBtn} onPress={() => logWater(ozToMl(9))}>
             <Text style={styles.waterBtnText}>+ 9 oz glass</Text>
           </Pressable>
-          <Pressable style={styles.waterBtn} onPress={() => logWater(12)}>
+          <Pressable style={styles.waterBtn} onPress={() => logWater(ozToMl(12))}>
             <Text style={styles.waterBtnText}>+ 12 oz glass</Text>
           </Pressable>
           <Pressable style={styles.waterBtn} onPress={() => setCustomOpen((v) => !v)}>
@@ -173,13 +178,26 @@ function WaterSection() {
             style={styles.customInput}
             value={customValue}
             onChangeText={setCustomValue}
-            placeholder="oz"
+            placeholder="amount"
             placeholderTextColor={colors.textTertiary}
             keyboardType="number-pad"
             onSubmitEditing={submitCustom}
             returnKeyType="done"
             autoFocus
           />
+          <View style={styles.unitToggle}>
+            {(["oz", "ml"] as const).map((u) => (
+              <Pressable
+                key={u}
+                style={[styles.unitBtn, customUnit === u && styles.unitBtnActive]}
+                onPress={() => setCustomUnit(u)}
+              >
+                <Text style={[styles.unitBtnText, customUnit === u && styles.unitBtnTextActive]}>
+                  {u.toUpperCase()}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
           <Pressable style={styles.customBtn} onPress={submitCustom}>
             <Text style={styles.customBtnText}>Log</Text>
           </Pressable>
@@ -454,4 +472,9 @@ const styles = StyleSheet.create({
   },
   customBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.surfaceDark },
   customBtnText: { fontFamily: fonts.sansMedium, fontSize: 12.5, color: "#fff" },
+  unitToggle: { flexDirection: "row", borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 2 },
+  unitBtn: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 },
+  unitBtnActive: { backgroundColor: colors.surfaceDark },
+  unitBtnText: { fontFamily: fonts.monoMedium, fontSize: 10.5, color: colors.textSecondary },
+  unitBtnTextActive: { color: "#fff" },
 });

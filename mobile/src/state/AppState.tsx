@@ -171,7 +171,7 @@ type AppStateValue = {
   health: HealthData | null;
   healthHistory: HealthHistoryDay[];
   water: number;
-  logWater: (amountOz: number) => void;
+  logWater: (amountMl: number) => void;
   loading: boolean;
   refreshing: boolean;
   refreshAll: () => Promise<void>;
@@ -294,10 +294,10 @@ export function AppStateProvider({
   async function loadWater() {
     const { data } = await supabase
       .from("water_logs")
-      .select("amount_oz")
+      .select("amount_ml")
       .eq("user_id", userId)
       .gte("logged_at", startOfDayIso());
-    if (data) setWater((data as { amount_oz: number }[]).reduce((sum, r) => sum + Number(r.amount_oz), 0));
+    if (data) setWater((data as { amount_ml: number }[]).reduce((sum, r) => sum + Number(r.amount_ml), 0));
   }
 
   async function loadTasks() {
@@ -500,14 +500,15 @@ export function AppStateProvider({
   }, []);
 
   // Logged straight from the app (not sourced from Fitbit) — a 9oz/12oz glass
-  // or a custom amount, added to today's running total.
-  const logWater = useCallback((amountOz: number) => {
-    if (!(amountOz > 0)) return;
-    setWater((prev) => prev + amountOz);
+  // or a custom amount, added to today's running total. Always mL — unit
+  // conversion (oz -> mL) happens in the UI before this is called.
+  const logWater = useCallback((amountMl: number) => {
+    if (!(amountMl > 0)) return;
+    setWater((prev) => prev + amountMl);
     const id = `w${Date.now()}`;
     void supabase
       .from("water_logs")
-      .insert({ id, user_id: userId, amount_oz: amountOz, logged_at: new Date().toISOString() })
+      .insert({ id, user_id: userId, amount_ml: amountMl, logged_at: new Date().toISOString() })
       .then(({ error }) => {
         if (error) {
           console.error("Failed to log water", error);

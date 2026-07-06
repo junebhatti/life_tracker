@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/AuthProvider";
 import { Ring } from "@/components/NutritionRings";
-import { WATER_TARGET_OZ } from "@/lib/nutritionTargets";
+import { WATER_TARGET_ML } from "@/lib/nutritionTargets";
+import { ozToMl, mlToLiters } from "@/lib/water";
 
 /** Start of the local civil day, as an ISO timestamp — water is logged
  *  straight from the app (not sourced from Fitbit), so "today" means the
@@ -20,22 +21,23 @@ function makeId(): string {
 }
 
 /** Water intake ring + quick-log buttons for the 9oz/12oz glasses at home,
- *  plus a custom amount. Lives right under the Nutrition rings on the Health
- *  page — same visual language (progress ring, value/target inside). */
+ *  plus a custom amount (oz or mL). Lives right under the Nutrition rings on
+ *  the Health page — same visual language (progress ring, value/target inside). */
 export default function WaterTracker() {
   const { user } = useAuth();
   const userId = user?.id;
 
-  const [ounces, setOunces] = useState<number | null>(null);
+  const [ml, setMl] = useState<number | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState("");
+  const [customUnit, setCustomUnit] = useState<"oz" | "ml">("oz");
 
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     supabase
       .from("water_logs")
-      .select("amount_oz")
+      .select("amount_ml")
       .eq("user_id", userId)
       .gte("logged_at", startOfDayIso())
       .then(({ data, error }) => {
@@ -44,57 +46,60 @@ export default function WaterTracker() {
           console.error("Failed to load water intake", error);
           return;
         }
-        setOunces((data ?? []).reduce((sum, row) => sum + Number(row.amount_oz), 0));
+        setMl((data ?? []).reduce((sum, row) => sum + Number(row.amount_ml), 0));
       });
     return () => {
       cancelled = true;
     };
   }, [userId]);
 
-  async function logWater(oz: number) {
-    if (!userId || !(oz > 0)) return;
-    const prevOunces = ounces ?? 0;
-    setOunces(prevOunces + oz);
+  async function logWaterMl(amountMl: number) {
+    if (!userId || !(amountMl > 0)) return;
+    const prevMl = ml ?? 0;
+    setMl(prevMl + amountMl);
     const { error } = await supabase
       .from("water_logs")
-      .insert({ id: makeId(), user_id: userId, amount_oz: oz, logged_at: new Date().toISOString() });
+      .insert({ id: makeId(), user_id: userId, amount_ml: amountMl, logged_at: new Date().toISOString() });
     if (error) {
       console.error("Failed to log water", error);
-      setOunces(prevOunces);
+      setMl(prevMl);
     }
   }
 
   function submitCustom() {
-    const oz = Number(customValue);
-    if (!oz || oz <= 0) return;
-    void logWater(oz);
+    const amount = Number(customValue);
+    if (!amount || amount <= 0) return;
+    void logWaterMl(customUnit === "oz" ? ozToMl(amount) : amount);
     setCustomValue("");
     setCustomOpen(false);
   }
+
+  const liters = mlToLiters(ml ?? 0);
+  const targetLiters = mlToLiters(WATER_TARGET_ML);
 
   return (
     <section className="border-t border-border pt-8">
       <p className="text-[11px] uppercase tracking-wider text-muted">Water · Today</p>
       <div className="mt-5 flex items-center gap-8">
         <div className="relative flex items-center justify-center">
-          <Ring size={128} stroke={10} value={ounces ?? 0} target={WATER_TARGET_OZ} color="#0891b2" />
+          <Ring size={128} stroke={10} value={ml ?? 0} target={WATER_TARGET_ML} color="#0891b2" />
           <div className="absolute flex flex-col items-center">
-            <span className="text-2xl font-semibold text-foreground">{Math.round(ounces ?? 0)}</span>
-            <span className="text-[11px] text-muted">/ {WATER_TARGET_OZ} oz</span>
+            <span className="text-2xl font-semibold text-foreground">{liters.toFixed(2)}</span>
+            <span className="text-[11px] text-muted">/ {targetLiters.toFixed(1)} L</span>
           </div>
         </div>
 
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            onClick={() => void logWater(9)}
+            onClick={() => void logWaterMl(ozToMl(9))}
             className="rounded-md border border-border px-4 py-2 text-left text-sm text-foreground transition-colors hover:bg-hover"
           >
             + 9 oz glass
           </button>
           <button
             type="button"
-            onClick={() => void logWater(12)}
+            onClick={() => void logWaterMl(ozToMl(12))}
             className="rounded-md border border-border px-4 py-2 text-left text-sm text-foreground transition-colors hover:bg-hover"
           >
             + 12 oz glass
@@ -117,10 +122,24 @@ export default function WaterTracker() {
             value={customValue}
             onChange={(e) => setCustomValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submitCustom()}
-            placeholder="oz"
+            placeholder="amount"
             autoFocus
             className="w-24 rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none"
           />
+          <div className="flex rounded-md border border-border p-0.5">
+            {(["oz", "ml"] as const).map((u) => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => setCustomUnit(u)}
+                className={`rounded px-3 py-1.5 text-xs font-medium uppercase transition-colors ${
+                  customUnit === u ? "bg-neutral-800 text-white" : "text-muted hover:text-foreground"
+                }`}
+              >
+                {u}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={submitCustom}

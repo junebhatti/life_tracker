@@ -176,14 +176,32 @@ create table if not exists public.scrap_items (
 create index if not exists scrap_items_owner_idx on public.scrap_items (owner);
 
 -- Water intake, logged directly from the app (not sourced from Fitbit/Google
--- Health) — one row per log entry so a day's total is the sum of amount_oz
--- for that civil day.
+-- Health) — one row per log entry so a day's total is the sum of amount_ml
+-- for that civil day. Canonical unit is milliliters (the target is framed in
+-- liters); oz is just an input convenience converted client-side before insert.
 create table if not exists public.water_logs (
   id text primary key,
   user_id uuid not null references auth.users (id) on delete cascade,
-  amount_oz numeric not null,
+  amount_ml numeric not null,
   logged_at timestamptz not null default now()
 );
+
+-- In case this table was created before the switch from oz to ml: add the new
+-- column, backfill it from the old one, then drop the old column. Wrapped in a
+-- conditional DO block (rather than a plain UPDATE referencing amount_oz)
+-- so this stays safe to re-run even after amount_oz no longer exists.
+alter table public.water_logs add column if not exists amount_ml numeric;
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'water_logs' and column_name = 'amount_oz'
+  ) then
+    update public.water_logs set amount_ml = round((amount_oz * 29.5735296875)::numeric, 1) where amount_ml is null;
+    alter table public.water_logs drop column amount_oz;
+  end if;
+end $$;
+alter table public.water_logs alter column amount_ml set not null;
 
 create index if not exists water_logs_user_id_idx on public.water_logs (user_id, logged_at);
 alter table public.water_logs enable row level security;
