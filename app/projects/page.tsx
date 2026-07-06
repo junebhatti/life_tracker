@@ -143,7 +143,7 @@ export default function ProjectsPage() {
               return (
                 <section>
                   <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">
-                    Practice · {practiceProjects.length + 1}
+                    Practice · {practiceProjects.length + 2}
                   </h2>
                   <div className="flex flex-col">
                     <Link
@@ -156,6 +156,18 @@ export default function ProjectsPage() {
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pl-6 text-[11px] uppercase tracking-wide text-muted">
                         <span>Elementary Urdu II</span>
+                      </div>
+                    </Link>
+                    <Link
+                      href="/podcasts"
+                      className="border-b border-border py-3 transition-colors hover:bg-hover"
+                    >
+                      <div className="flex items-center gap-2 px-2">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#1d4ed8]" aria-hidden="true" />
+                        <span className="text-lg font-medium text-foreground">Podcast Notes</span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pl-6 text-[11px] uppercase tracking-wide text-muted">
+                        <span>Listening log → Library</span>
                       </div>
                     </Link>
                     {practiceProjects.map((p) => {
