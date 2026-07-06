@@ -38,6 +38,7 @@ import type {
   WaterEntry,
   WaterHistoryDay,
 } from "../types";
+import type { PodcastMeta } from "../lib/podcast";
 
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,7 @@ type NoteRow = {
   id: string; title: string; content: string; category?: string | null;
   manual_title?: string | null; manual_content?: string | null;
   tags: string[]; manual_tags: string[]; created_at: string;
+  metadata?: PodcastMeta | null;
 };
 type ProjectRow = {
   id: string; name: string; color: string; type: string;
@@ -106,9 +108,11 @@ function mapNote(row: NoteRow): LibraryNote {
     id: row.id,
     category,
     label: (row.manual_title || row.title).toUpperCase().slice(0, 40),
+    rawTitle: row.manual_title || row.title,
     date: formatDate(row.created_at),
     body: row.manual_content || row.content || "",
     tags: allTags.length ? allTags : [category.toUpperCase()],
+    metadata: row.metadata ?? undefined,
   };
 }
 
@@ -202,6 +206,8 @@ type AppStateValue = {
   selectedNoteId: string | null;
   openNote: (id: string | null) => void;
   updateNote: (id: string, patch: Partial<LibraryNote>) => void;
+  addPodcastEpisode: (input: { title: string; meta: PodcastMeta; tags: string[] }) => string;
+  savePodcastEpisode: (id: string, patch: { title?: string; body?: string; tags?: string[]; meta?: PodcastMeta }) => void;
   selectedProjectId: string | null;
   openProject: (id: string | null) => void;
   capture: "text" | null;
@@ -325,7 +331,7 @@ export function AppStateProvider({
   async function loadNotes() {
     const { data } = await supabase
       .from("library_notes")
-      .select("id,title,content,category,manual_title,manual_content,tags,manual_tags,created_at")
+      .select("id,title,content,category,manual_title,manual_content,tags,manual_tags,created_at,metadata")
       .eq("user_id", userId)
       .is("archived_at", null)
       .order("created_at", { ascending: false });
@@ -990,6 +996,90 @@ export function AppStateProvider({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showToast]);
 
+  // ---- podcast notes ------------------------------------------------------
+  // Podcast episodes are stored as library notes (category "Podcasts") so they
+  // show up in the Library automatically. The extra metadata (source URL, cover
+  // art, show, host) lives in the metadata jsonb column. Unlike Obsidian-synced
+  // notes, these are app-native, so we write the primary title/content/tags
+  // columns directly (no manual_ overrides to worry about re-syncing).
+
+  const addPodcastEpisode = useCallback((input: { title: string; meta: PodcastMeta; tags: string[] }): string => {
+    const id = `pod${Date.now()}`;
+    const title = input.title.trim() || "Untitled Episode";
+    const note: LibraryNote = {
+      id,
+      category: "Podcasts",
+      label: title.toUpperCase().slice(0, 40),
+      rawTitle: title,
+      date: todayStr(),
+      body: "",
+      tags: input.tags.length ? input.tags : ["PODCASTS"],
+      metadata: input.meta,
+    };
+    setNotes((prev) => [note, ...prev]);
+    void supabase
+      .from("library_notes")
+      .insert({
+        id,
+        path: `podcast/${id}`,
+        title,
+        content: "",
+        category: "Podcasts",
+        tags: input.tags,
+        manual_tags: [],
+        metadata: input.meta,
+        user_id: userId,
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to add podcast episode", error);
+          showToast("Couldn't save — check your connection");
+          void loadNotes();
+        }
+      });
+    return id;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, showToast]);
+
+  const savePodcastEpisode = useCallback(
+    (id: string, patch: { title?: string; body?: string; tags?: string[]; meta?: PodcastMeta }) => {
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === id
+            ? {
+                ...n,
+                label: patch.title !== undefined ? patch.title.toUpperCase().slice(0, 40) : n.label,
+                rawTitle: patch.title !== undefined ? patch.title : n.rawTitle,
+                body: patch.body !== undefined ? patch.body : n.body,
+                tags: patch.tags !== undefined ? (patch.tags.length ? patch.tags : ["PODCASTS"]) : n.tags,
+                metadata: patch.meta !== undefined ? patch.meta : n.metadata,
+              }
+            : n,
+        ),
+      );
+      const db: Record<string, unknown> = {};
+      if (patch.title !== undefined) db.title = patch.title.trim() || "Untitled Episode";
+      if (patch.body !== undefined) db.content = patch.body;
+      if (patch.tags !== undefined) db.tags = patch.tags;
+      if (patch.meta !== undefined) db.metadata = patch.meta;
+      if (Object.keys(db).length) {
+        void supabase
+          .from("library_notes")
+          .update(db)
+          .eq("id", id)
+          .then(({ error }) => {
+            if (error) {
+              console.error("Failed to save podcast episode", error);
+              showToast("Couldn't save — check your connection");
+              void loadNotes();
+            }
+          });
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showToast],
+  );
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -1016,7 +1106,7 @@ export function AppStateProvider({
       categories,
       libFilter, setLibFilter,
       query, setQuery,
-      selectedNoteId, openNote, updateNote,
+      selectedNoteId, openNote, updateNote, addPodcastEpisode, savePodcastEpisode,
       selectedProjectId, openProject,
       capture, draft, setDraft, openCapture, closeCapture, submitCapture,
       deleteNote,
@@ -1030,7 +1120,7 @@ export function AppStateProvider({
       healthExpanded, toggleHealthExpanded,
       categories,
       libFilter, query,
-      selectedNoteId, openNote, updateNote,
+      selectedNoteId, openNote, updateNote, addPodcastEpisode, savePodcastEpisode,
       selectedProjectId, openProject,
       capture, draft, openCapture, closeCapture, submitCapture,
       deleteNote,

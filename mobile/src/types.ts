@@ -1,3 +1,6 @@
+import type { PodcastMeta } from "./lib/podcast";
+export type { PodcastMeta } from "./lib/podcast";
+
 export type Task = {
   id: string;
   title: string;
@@ -61,17 +64,21 @@ export type Person = {
   noteCount: number;
 };
 
-export type LibraryCategory = "Notes" | "Quotes" | "Journal" | "Books" | "Inventory";
+export type LibraryCategory = "Notes" | "Quotes" | "Journal" | "Books" | "Inventory" | "Podcasts";
 
 export type LibraryNote = {
   id: string;
   category: LibraryCategory;
   label: string;
+  /** Untransformed title (label is uppercased/truncated for list display). */
+  rawTitle?: string;
   sub?: string;
   date: string;
   body: string;
   images?: number;
   tags: string[];
+  /** Present on podcast episodes: source URL, cover art, show, host. */
+  metadata?: PodcastMeta;
 };
 
 type ScrapItemBase = {

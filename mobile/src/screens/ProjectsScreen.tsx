@@ -6,6 +6,7 @@ import { useAppState } from "../state/AppState";
 import PageHeader from "../components/PageHeader";
 import TaskRow from "../components/TaskRow";
 import FlashcardsScreen from "./FlashcardsScreen";
+import PodcastNotesScreen from "./PodcastNotesScreen";
 import type { Project, ProjectGroup, ProjectType } from "../types";
 
 // "Practice" is rendered as its own always-visible section (below), so it's
@@ -287,12 +288,26 @@ function FlashcardsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── practice: podcast notes ─────────────────────────────────────────────────────
+// Like Flashcards, Podcast Notes is a mini-app that lives inside Projects.
+// It manages its own layout (list ⇄ editor ⇄ import), so it isn't wrapped in
+// the shared ScrollView.
+
+function PodcastNotesModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <PodcastNotesScreen onClose={onClose} />
+    </Modal>
+  );
+}
+
 // ── screen ────────────────────────────────────────────────────────────────────
 
 export default function ProjectsScreen() {
   const { projects, selectedProjectId, openProject } = useAppState();
   const [showNew, setShowNew] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
+  const [showPodcasts, setShowPodcasts] = useState(false);
   const groups = useMemo(() => groupProjects(projects), [projects]);
   const practiceProjects = useMemo(() => projects.filter((p) => p.group === "Practice"), [projects]);
   const activeCount = projects.filter((p) => p.group === "Active").length;
@@ -322,14 +337,22 @@ export default function ProjectsScreen() {
         </View>
       ))}
 
-      {/* Practice — always shown (Flashcards lives here), unlike the groups above */}
+      {/* Practice — always shown (Flashcards + Podcast Notes live here), unlike the groups above */}
       <View>
-        <Text style={styles.groupLabel}>{`Practice · ${practiceProjects.length + 1}`}</Text>
+        <Text style={styles.groupLabel}>{`Practice · ${practiceProjects.length + 2}`}</Text>
         <Pressable style={styles.row} onPress={() => setShowFlashcards(true)}>
           <View style={[styles.dot, { backgroundColor: "#b23a2e" }]} />
           <View style={styles.body}>
             <Text style={styles.name}>Urdu Flashcards</Text>
             <Text style={styles.meta}>Elementary Urdu II</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+        <Pressable style={styles.row} onPress={() => setShowPodcasts(true)}>
+          <View style={[styles.dot, { backgroundColor: "#1d4ed8" }]} />
+          <View style={styles.body}>
+            <Text style={styles.name}>Podcast Notes</Text>
+            <Text style={styles.meta}>Listening log → Library</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </Pressable>
@@ -352,6 +375,7 @@ export default function ProjectsScreen() {
       {selectedProject ? <ProjectDetail project={selectedProject} onClose={() => openProject(null)} /> : null}
       {showNew ? <NewProjectModal onClose={() => setShowNew(false)} /> : null}
       {showFlashcards ? <FlashcardsModal onClose={() => setShowFlashcards(false)} /> : null}
+      {showPodcasts ? <PodcastNotesModal onClose={() => setShowPodcasts(false)} /> : null}
     </View>
   );
 }

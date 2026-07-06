@@ -172,6 +172,7 @@ const DEFAULT_TAGS: Record<LibraryCategory, string[]> = {
   Quotes: ["QUOTES"],
   Books: ["READING", "BOOKS"],
   Inventory: ["INVENTORY"],
+  Podcasts: ["PODCASTS"],
 };
 
 function tagsFor(category: LibraryCategory, viaVoice?: boolean): string[] {

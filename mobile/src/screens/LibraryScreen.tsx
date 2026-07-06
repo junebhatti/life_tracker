@@ -7,7 +7,7 @@ import PageHeader from "../components/PageHeader";
 import NoteEditor from "../components/NoteEditor";
 import type { LibraryFilter, LibraryNote } from "../types";
 
-const FILTERS: LibraryFilter[] = ["All", "Notes", "Quotes", "Journal", "Books", "Inventory", "People"];
+const FILTERS: LibraryFilter[] = ["All", "Notes", "Quotes", "Journal", "Books", "Inventory", "Podcasts", "People"];
 
 function Chevron() {
   return (

@@ -73,6 +73,9 @@ alter table public.library_notes add column if not exists category text;
 alter table public.library_notes add column if not exists manual_title text;
 alter table public.library_notes add column if not exists manual_content text;
 alter table public.library_notes add column if not exists archived_at timestamptz;
+-- Podcast episodes are stored as library notes (category 'Podcasts'); this holds
+-- their extra metadata (source URL, cover art, show/host) that plain notes lack.
+alter table public.library_notes add column if not exists metadata jsonb;
 
 -- Places visited worldwide for the Map feature.
 create table if not exists public.map_places (
