@@ -128,6 +128,19 @@ export function youtubeVideoId(raw: string): string | null {
   return null;
 }
 
+/** Formats a playback position in milliseconds as "m:ss" or "h:mm:ss", for
+ *  live Spotify timestamp insertion while taking notes. */
+export function formatPlaybackTimestamp(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  if (hours > 0) return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+  return `${minutes}:${pad(seconds)}`;
+}
+
 /** Obsidian-ready Markdown export for an episode + its notes. */
 export function episodeToMarkdown(input: {
   title: string;

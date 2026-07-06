@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -20,6 +20,7 @@ import {
   normalizeContentUrl,
   sourceLabel,
   episodeToMarkdown,
+  formatPlaybackTimestamp,
   type PodcastMeta,
 } from "../lib/podcast";
 import type { LibraryNote } from "../types";
@@ -35,6 +36,12 @@ type FetchedMeta = {
   sourceLabel: string;
 };
 
+type SpotifyNowPlaying =
+  | { isEpisode: true; isPlaying: boolean; title: string; show?: string; host?: string; coverUrl?: string; sourceUrl: string; progressMs?: number }
+  | { isEpisode: false; isPlaying: boolean };
+
+type SpotifyNowPlayingResponse = { configured: boolean; nowPlaying?: SpotifyNowPlaying | null; error?: string };
+
 async function fetchMetadata(url: string): Promise<FetchedMeta | null> {
   if (!API_URL && Platform.OS !== "web") return null;
   try {
@@ -49,6 +56,37 @@ async function fetchMetadata(url: string): Promise<FetchedMeta | null> {
   } catch {
     return null;
   }
+}
+
+async function fetchNowPlaying(): Promise<SpotifyNowPlayingResponse | null> {
+  if (!API_URL && Platform.OS !== "web") return null;
+  try {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    const res = await fetch(`${API_URL}/api/podcasts/spotify/now-playing?t=${Date.now()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      cache: "no-store",
+    });
+    return (await res.json()) as SpotifyNowPlayingResponse;
+  } catch {
+    return null;
+  }
+}
+
+/** Fire-and-forget check for whether Spotify is connected — gates the
+ *  "Import current episode" / "Insert timestamp" buttons. */
+function useSpotifyConfigured(): boolean {
+  const [configured, setConfigured] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetchNowPlaying().then((data) => {
+      if (!cancelled && data) setConfigured(Boolean(data.configured));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return configured;
 }
 
 async function readClipboard(): Promise<string> {
@@ -118,6 +156,7 @@ function Artwork({ url, size }: { url?: string; size: number }) {
 
 function ImportModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const { addPodcastEpisode, showToast } = useAppState();
+  const spotifyReady = useSpotifyConfigured();
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [show, setShow] = useState("");
@@ -160,6 +199,32 @@ function ImportModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
     setHost(meta.host);
     setCoverUrl(meta.coverUrl);
     setStatus(`Imported from ${meta.sourceLabel}.`);
+  }
+
+  async function importCurrentEpisode() {
+    setBusy(true);
+    setStatus("Checking Spotify…");
+    const data = await fetchNowPlaying();
+    setBusy(false);
+    if (!data || data.error) {
+      setStatus(data?.error ?? "Could not reach Spotify.");
+      return;
+    }
+    if (!data.nowPlaying) {
+      setStatus("Nothing is playing on Spotify right now.");
+      return;
+    }
+    if (!data.nowPlaying.isEpisode) {
+      setStatus("Spotify is playing music, not a podcast episode.");
+      return;
+    }
+    const np = data.nowPlaying;
+    setUrl(np.sourceUrl);
+    setTitle(np.title);
+    setShow(np.show ?? "");
+    setHost(np.host ?? "");
+    setCoverUrl(np.coverUrl ?? "");
+    setStatus("Imported the episode currently playing on Spotify.");
   }
 
   function create() {
@@ -214,6 +279,16 @@ function ImportModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Fetch details</Text>}
           </Pressable>
 
+          {spotifyReady ? (
+            <Pressable
+              style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+              onPress={importCurrentEpisode}
+              disabled={busy}
+            >
+              <Text style={styles.secondaryBtnText}>Import current Spotify episode</Text>
+            </Pressable>
+          ) : null}
+
           {status ? <Text style={styles.statusText}>{status}</Text> : null}
 
           <Text style={styles.fieldLabel}>Episode title</Text>
@@ -241,16 +316,57 @@ function ImportModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 
 function EpisodeEditor({ episode, onBack }: { episode: LibraryNote; onBack: () => void }) {
   const { savePodcastEpisode, deleteNote, showToast } = useAppState();
+  const spotifyReady = useSpotifyConfigured();
   const meta = episode.metadata;
   const [title, setTitle] = useState(episode.rawTitle ?? episode.label);
   const [show, setShow] = useState(meta?.show ?? "");
   const [tags, setTags] = useState(displayTags(episode.tags).join(", "));
   const [body, setBody] = useState(episode.body);
   const [showMenu, setShowMenu] = useState(false);
+  const [selection, setSelection] = useState({ start: episode.body.length, end: episode.body.length });
+  const [insertingTimestamp, setInsertingTimestamp] = useState(false);
 
   function persistMeta(nextShow: string) {
     if (!meta) return;
     savePodcastEpisode(episode.id, { meta: { ...meta, show: nextShow.trim() || undefined } });
+  }
+
+  async function insertLiveTimestamp() {
+    if (!meta?.sourceUrl) {
+      showToast("This episode has no source link to match against.");
+      return;
+    }
+    setInsertingTimestamp(true);
+    const data = await fetchNowPlaying();
+    setInsertingTimestamp(false);
+    if (!data || data.error) {
+      showToast(data?.error ?? "Could not reach Spotify.");
+      return;
+    }
+    if (!data.nowPlaying || !data.nowPlaying.isEpisode) {
+      showToast("Spotify isn't playing a podcast episode right now.");
+      return;
+    }
+    const np = data.nowPlaying;
+    const matches =
+      normalizeContentUrl(np.sourceUrl) === normalizeContentUrl(meta.sourceUrl) || np.sourceUrl === meta.sourceUrl;
+    if (!matches) {
+      showToast("Spotify is playing a different episode than this note.");
+      return;
+    }
+    if (np.progressMs === undefined) {
+      showToast("Spotify didn't return a playback position.");
+      return;
+    }
+    const insert = `[${formatPlaybackTimestamp(np.progressMs)}] `;
+    const start = selection.start;
+    const end = selection.end;
+    const next = `${body.slice(0, start)}${insert}${body.slice(end)}`;
+    setBody(next);
+    savePodcastEpisode(episode.id, { body: next });
+    const pos = start + insert.length;
+    setSelection({ start: pos, end: pos });
+    showToast("Inserted current timestamp");
   }
 
   async function copyMarkdown() {
@@ -336,12 +452,20 @@ function EpisodeEditor({ episode, onBack }: { episode: LibraryNote; onBack: () =
           placeholderTextColor={colors.textTertiary}
         />
 
-        <Text style={[styles.fieldLabel, { marginTop: 22 }]}>Notes</Text>
+        <View style={[styles.notesHeaderRow, { marginTop: 22 }]}>
+          <Text style={[styles.fieldLabel, { marginTop: 0 }]}>Notes</Text>
+          {spotifyReady ? (
+            <Pressable style={styles.timestampBtn} onPress={insertLiveTimestamp} disabled={insertingTimestamp} hitSlop={8}>
+              <Text style={styles.timestampBtnText}>{insertingTimestamp ? "…" : "+ Insert timestamp"}</Text>
+            </Pressable>
+          ) : null}
+        </View>
         <TextInput
           style={styles.noteArea}
           value={body}
           onChangeText={setBody}
           onBlur={() => savePodcastEpisode(episode.id, { body })}
+          onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
           placeholder="Type your notes while you listen…"
           placeholderTextColor={colors.textTertiary}
           multiline
@@ -531,6 +655,11 @@ const styles = StyleSheet.create({
   pasteBtnText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.textPrimary },
   primaryBtn: { marginTop: 10, backgroundColor: colors.surfaceDark, borderRadius: 11, paddingVertical: 13, alignItems: "center" },
   primaryBtnText: { fontFamily: fonts.sansSemiBold, fontSize: 15, color: "#fff" },
+  secondaryBtn: { marginTop: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 11, paddingVertical: 12, alignItems: "center" },
+  secondaryBtnText: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.textPrimary },
+  timestampBtn: { paddingVertical: 2, paddingHorizontal: 4 },
+  timestampBtnText: { fontFamily: fonts.monoMedium, fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: colors.textSecondary },
+  notesHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   btnDisabled: { opacity: 0.4 },
   statusText: { fontFamily: fonts.sans, fontSize: 12.5, color: colors.textSecondary, marginTop: 10 },
   fieldLabel: {

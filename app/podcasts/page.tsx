@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/components/AuthProvider";
 import { useLibrary } from "@/components/LibraryStore";
@@ -11,6 +11,7 @@ import {
   normalizeContentUrl,
   sourceLabel,
   episodeToMarkdown,
+  formatPlaybackTimestamp,
   type PodcastMeta,
 } from "@/lib/podcast";
 import type { LibraryNote } from "@/lib/library";
@@ -23,6 +24,32 @@ type FetchedMeta = {
   sourceUrl: string;
   sourceLabel: string;
 };
+
+type SpotifyNowPlaying =
+  | { isEpisode: true; isPlaying: boolean; title: string; show?: string; host?: string; coverUrl?: string; sourceUrl: string; progressMs?: number }
+  | { isEpisode: false; isPlaying: boolean };
+
+type SpotifyNowPlayingResponse = { configured: boolean; nowPlaying?: SpotifyNowPlaying | null; error?: string };
+
+/** Fire-and-forget check for whether Spotify is connected — gates the
+ *  "Import current episode" / "Insert timestamp" buttons. */
+function useSpotifyConfigured(token: string | undefined): boolean {
+  const [configured, setConfigured] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetch("/api/podcasts/spotify/now-playing", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json())
+      .then((data: SpotifyNowPlayingResponse) => {
+        if (!cancelled) setConfigured(Boolean(data.configured));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+  return configured;
+}
 
 function parseTags(entry: string): string[] {
   return [
@@ -78,6 +105,7 @@ export default function PodcastsPage() {
   const { session } = useAuth();
   const token = session?.access_token;
   const { notes, addPodcastEpisode, savePodcastEpisode, deleteNote } = useLibrary();
+  const spotifyReady = useSpotifyConfigured(token);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -125,6 +153,39 @@ export default function PodcastsPage() {
       setStatus(`Imported from ${meta.sourceLabel}.`);
     } catch {
       setStatus("Couldn't auto-import. Fill the fields in manually.");
+    }
+    setBusy(false);
+  }
+
+  async function importCurrentEpisode() {
+    setBusy(true);
+    setStatus("Checking Spotify…");
+    try {
+      const res = await fetch("/api/podcasts/spotify/now-playing", {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const data = (await res.json()) as SpotifyNowPlayingResponse;
+      if (!res.ok || data.error) {
+        setStatus(data.error ?? "Could not reach Spotify.");
+        return;
+      }
+      if (!data.nowPlaying) {
+        setStatus("Nothing is playing on Spotify right now.");
+        return;
+      }
+      if (!data.nowPlaying.isEpisode) {
+        setStatus("Spotify is playing music, not a podcast episode.");
+        return;
+      }
+      const np = data.nowPlaying;
+      setUrl(np.sourceUrl);
+      setTitle(np.title);
+      setShow(np.show ?? "");
+      setHost(np.host ?? "");
+      setCoverUrl(np.coverUrl ?? "");
+      setStatus("Imported the episode currently playing on Spotify.");
+    } catch {
+      setStatus("Could not import current episode.");
     }
     setBusy(false);
   }
@@ -191,6 +252,8 @@ export default function PodcastsPage() {
                 setActiveId(null);
               }}
               onCopy={copyMarkdown}
+              token={token}
+              spotifyReady={spotifyReady}
             />
           ) : (
             <>
@@ -221,6 +284,17 @@ export default function PodcastsPage() {
                     {busy ? "…" : "Fetch"}
                   </button>
                 </div>
+
+                {spotifyReady && (
+                  <button
+                    type="button"
+                    onClick={importCurrentEpisode}
+                    disabled={busy}
+                    className="mt-2 w-full rounded-md border border-border py-2 text-sm text-foreground transition-colors hover:bg-hover disabled:opacity-40"
+                  >
+                    Import current Spotify episode
+                  </button>
+                )}
 
                 {status && <p className="mt-2 text-xs text-muted">{status}</p>}
 
@@ -293,20 +367,85 @@ function Editor({
   onSave,
   onDelete,
   onCopy,
+  token,
+  spotifyReady,
 }: {
   episode: LibraryNote;
   onBack: () => void;
   onSave: (id: string, patch: { title?: string; content?: string; tags?: string[]; meta?: PodcastMeta }) => void;
   onDelete: (id: string) => void;
   onCopy: (ep: LibraryNote) => void;
+  token: string | undefined;
+  spotifyReady: boolean;
 }) {
   const meta = episode.metadata;
   const [title, setTitle] = useState(episodeTitle(episode));
   const [show, setShow] = useState(meta?.show ?? "");
   const [tags, setTags] = useState(displayTags(episode.tags).join(", "));
   const [body, setBody] = useState(episodeBody(episode));
+  const [timestampStatus, setTimestampStatus] = useState("");
+  const [insertingTimestamp, setInsertingTimestamp] = useState(false);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
 
   const label = meta ? sourceLabel(meta.sourceUrl) : "Source";
+
+  function insertAtCursor(text: string) {
+    const el = noteRef.current;
+    if (!el) {
+      setBody((b) => `${b}${text}`);
+      return;
+    }
+    const start = el.selectionStart ?? body.length;
+    const end = el.selectionEnd ?? body.length;
+    const next = `${body.slice(0, start)}${text}${body.slice(end)}`;
+    setBody(next);
+    onSave(episode.id, { content: next });
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + text.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
+  async function insertLiveTimestamp() {
+    if (!meta?.sourceUrl) {
+      setTimestampStatus("This episode has no source link to match against.");
+      return;
+    }
+    setInsertingTimestamp(true);
+    setTimestampStatus("");
+    try {
+      const res = await fetch("/api/podcasts/spotify/now-playing", {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const data = (await res.json()) as SpotifyNowPlayingResponse;
+      if (!res.ok || data.error) {
+        setTimestampStatus(data.error ?? "Could not reach Spotify.");
+        return;
+      }
+      if (!data.nowPlaying || !data.nowPlaying.isEpisode) {
+        setTimestampStatus("Spotify isn't playing a podcast episode right now.");
+        return;
+      }
+      const np = data.nowPlaying;
+      const matches =
+        normalizeContentUrl(np.sourceUrl) === normalizeContentUrl(meta.sourceUrl) ||
+        np.sourceUrl === meta.sourceUrl;
+      if (!matches) {
+        setTimestampStatus("Spotify is playing a different episode than this note.");
+        return;
+      }
+      if (np.progressMs === undefined) {
+        setTimestampStatus("Spotify didn't return a playback position.");
+        return;
+      }
+      insertAtCursor(`[${formatPlaybackTimestamp(np.progressMs)}] `);
+      setTimestampStatus("Inserted current timestamp.");
+    } catch {
+      setTimestampStatus("Could not fetch the current timestamp.");
+    }
+    setInsertingTimestamp(false);
+  }
 
   return (
     <section className="mt-8">
@@ -359,8 +498,22 @@ function Editor({
         className="mt-2 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none"
       />
 
-      <p className="mt-6 text-[11px] uppercase tracking-wider text-muted">Notes</p>
+      <div className="mt-6 flex items-center justify-between">
+        <p className="text-[11px] uppercase tracking-wider text-muted">Notes</p>
+        {spotifyReady && (
+          <button
+            type="button"
+            onClick={insertLiveTimestamp}
+            disabled={insertingTimestamp}
+            className="text-[11px] font-medium uppercase tracking-wider text-muted transition-colors hover:text-foreground disabled:opacity-40"
+          >
+            {insertingTimestamp ? "…" : "+ Insert timestamp"}
+          </button>
+        )}
+      </div>
+      {timestampStatus && <p className="mt-1 text-xs text-muted">{timestampStatus}</p>}
       <textarea
+        ref={noteRef}
         value={body}
         onChange={(e) => setBody(e.target.value)}
         onBlur={() => onSave(episode.id, { content: body })}

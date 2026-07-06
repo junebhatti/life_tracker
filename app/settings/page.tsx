@@ -1,6 +1,7 @@
 import Sidebar from "@/components/Sidebar";
 import CalendarIntegrationStatus from "@/components/CalendarIntegrationStatus";
 import HealthIntegrationStatus from "@/components/HealthIntegrationStatus";
+import SpotifyIntegrationStatus from "@/components/SpotifyIntegrationStatus";
 import ObsidianSync from "@/components/ObsidianSync";
 import PlaidConnect from "@/components/PlaidConnect";
 import SessionStatus from "@/components/SessionStatus";
@@ -25,6 +26,7 @@ export default function SettingsPage() {
             <SessionStatus />
             <CalendarIntegrationStatus />
             <HealthIntegrationStatus />
+            <SpotifyIntegrationStatus />
             <PlaidConnect />
             <ObsidianSync />
           </div>
