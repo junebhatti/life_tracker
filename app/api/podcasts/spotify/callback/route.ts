@@ -3,16 +3,30 @@ import { NextRequest } from "next/server";
 type TokenResponse = { refresh_token?: string; error?: string; error_description?: string };
 
 function htmlResponse(message: string, token?: string) {
+  // A one-click copy button avoids the #1 cause of "invalid refresh token"
+  // errors afterward: manually selecting the text grabs stray whitespace or
+  // clips a character, which silently produces a token Spotify rejects.
+  const tokenBlock = token
+    ? `<pre id="token" style="background:#f4f4f4; padding:16px; border-radius:8px; white-space:pre-wrap; word-break:break-all;">${token}</pre>
+    <button id="copyBtn" style="padding:10px 16px; border-radius:8px; border:1px solid #ccc; background:#fff; cursor:pointer; font-size:14px;">Copy token</button>
+    <script>
+      document.getElementById("copyBtn").addEventListener("click", function () {
+        var text = document.getElementById("token").textContent;
+        navigator.clipboard.writeText(text).then(function () {
+          var btn = document.getElementById("copyBtn");
+          btn.textContent = "Copied!";
+          setTimeout(function () { btn.textContent = "Copy token"; }, 2000);
+        });
+      });
+    </script>`
+    : "";
+
   const body = `<!doctype html>
 <html>
   <body style="font-family: system-ui, sans-serif; max-width: 640px; margin: 80px auto; color: #111; line-height: 1.5;">
     <h1 style="font-size: 18px;">Spotify</h1>
     <p>${message}</p>
-    ${
-      token
-        ? `<pre style="background:#f4f4f4; padding:16px; border-radius:8px; white-space:pre-wrap; word-break:break-all;">${token}</pre>`
-        : ""
-    }
+    ${tokenBlock}
   </body>
 </html>`;
   return new Response(body, { headers: { "Content-Type": "text/html" } });
