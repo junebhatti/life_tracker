@@ -40,7 +40,12 @@ async function getAccessToken(): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`Spotify token refresh failed: ${res.status}`);
+    // Surface Spotify's actual reason (invalid_grant/invalid_client/etc.), not
+    // just the HTTP status — the status code alone doesn't say whether the
+    // refresh token, client ID, or client secret is the problem.
+    const body = (await res.json().catch(() => null)) as { error?: string; error_description?: string } | null;
+    const reason = body?.error_description || body?.error || `HTTP ${res.status}`;
+    throw new Error(`Spotify token refresh failed: ${reason}`);
   }
 
   const data = (await res.json()) as SpotifyTokenResponse;

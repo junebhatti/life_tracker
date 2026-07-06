@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ configured: true, nowPlaying });
   } catch (error) {
     console.error("Spotify now-playing fetch failed:", error);
-    return NextResponse.json({ configured: true, error: "Couldn't reach Spotify." }, { status: 502 });
+    const detail = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ configured: true, error: detail }, { status: 502 });
   }
 }
