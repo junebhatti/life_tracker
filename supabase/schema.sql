@@ -178,6 +178,28 @@ create table if not exists public.scrap_items (
 );
 create index if not exists scrap_items_owner_idx on public.scrap_items (owner);
 
+-- English vocabulary words for the flashcards/reference-list "English
+-- Vocabulary" project. `definition` is nullable — a word can be captured
+-- while reading and filled in with a definition later.
+create table if not exists public.vocab_words (
+  id text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  word text not null,
+  definition text,
+  created_at timestamptz not null default now()
+);
+create index if not exists vocab_words_user_id_idx on public.vocab_words (user_id);
+alter table public.vocab_words enable row level security;
+
+drop policy if exists "vocab_words_select_own" on public.vocab_words;
+drop policy if exists "vocab_words_insert_own" on public.vocab_words;
+drop policy if exists "vocab_words_update_own" on public.vocab_words;
+drop policy if exists "vocab_words_delete_own" on public.vocab_words;
+create policy "vocab_words_select_own" on public.vocab_words for select using (auth.uid() = user_id);
+create policy "vocab_words_insert_own" on public.vocab_words for insert with check (auth.uid() = user_id);
+create policy "vocab_words_update_own" on public.vocab_words for update using (auth.uid() = user_id);
+create policy "vocab_words_delete_own" on public.vocab_words for delete using (auth.uid() = user_id);
+
 -- Water intake, logged directly from the app (not sourced from Fitbit/Google
 -- Health) — one row per log entry so a day's total is the sum of amount_ml
 -- for that civil day. Canonical unit is milliliters (the target is framed in
@@ -324,5 +346,8 @@ begin
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'budget_transactions') then
     alter publication supabase_realtime add table public.budget_transactions;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'vocab_words') then
+    alter publication supabase_realtime add table public.vocab_words;
   end if;
 end $$;

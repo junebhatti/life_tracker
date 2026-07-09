@@ -1,5 +1,6 @@
 import type { PodcastMeta } from "./lib/podcast";
 export type { PodcastMeta } from "./lib/podcast";
+export type { VocabWord } from "./lib/vocab";
 
 export type Task = {
   id: string;

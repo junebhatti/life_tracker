@@ -39,6 +39,7 @@ import type {
   WaterHistoryDay,
 } from "../types";
 import type { PodcastMeta } from "../lib/podcast";
+import type { VocabWord } from "../lib/vocab";
 
 
 // ---------------------------------------------------------------------------
@@ -208,6 +209,10 @@ type AppStateValue = {
   updateNote: (id: string, patch: Partial<LibraryNote>) => void;
   addPodcastEpisode: (input: { title: string; meta: PodcastMeta; tags: string[] }) => string;
   savePodcastEpisode: (id: string, patch: { title?: string; body?: string; tags?: string[]; meta?: PodcastMeta }) => void;
+  vocabWords: VocabWord[];
+  addVocabWord: (word: string, definition?: string) => void;
+  updateVocabWord: (id: string, patch: { word?: string; definition?: string }) => void;
+  deleteVocabWord: (id: string) => void;
   selectedProjectId: string | null;
   openProject: (id: string | null) => void;
   capture: "text" | null;
@@ -258,6 +263,7 @@ export function AppStateProvider({
   const [water, setWater] = useState(0);
   const [waterHistory, setWaterHistory] = useState<WaterHistoryDay[]>([]);
   const [waterEntries, setWaterEntries] = useState<WaterEntry[]>([]);
+  const [vocabWords, setVocabWords] = useState<VocabWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -293,6 +299,7 @@ export function AppStateProvider({
       loadHealthHistory(),
       loadWater(),
       loadWaterHistory(),
+      loadVocabWords(),
     ]);
     setLoading(false);
   }
@@ -488,6 +495,23 @@ export function AppStateProvider({
     }
   }
 
+  async function loadVocabWords() {
+    const { data } = await supabase
+      .from("vocab_words")
+      .select("id,word,definition,created_at")
+      .eq("user_id", userId);
+    if (data) {
+      setVocabWords(
+        (data as { id: string; word: string; definition: string | null; created_at: string }[]).map((r) => ({
+          id: r.id,
+          word: r.word,
+          definition: r.definition ?? undefined,
+          createdAt: r.created_at,
+        })),
+      );
+    }
+  }
+
   // Re-pull everything without clearing the screen (used by the manual Sync
   // button and by the foreground refetch below).
   const refreshAll = useCallback(async () => {
@@ -504,6 +528,7 @@ export function AppStateProvider({
       loadHealthHistory(),
       loadWater(),
       loadWaterHistory(),
+      loadVocabWords(),
     ]);
     setRefreshing(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1080,6 +1105,75 @@ export function AppStateProvider({
     [showToast],
   );
 
+  // ---- English vocabulary ---------------------------------------------------
+  // Words collected while reading. A word can exist with no definition yet —
+  // it's filled in later from the vocabulary screen.
+
+  const addVocabWord = useCallback((word: string, definition?: string) => {
+    const trimmed = word.trim();
+    if (!trimmed) return;
+    const id = `vocab${Date.now()}`;
+    const entry: VocabWord = { id, word: trimmed, definition: definition?.trim() || undefined, createdAt: new Date().toISOString() };
+    setVocabWords((prev) => [...prev, entry]);
+    void supabase
+      .from("vocab_words")
+      .insert({ id, user_id: userId, word: entry.word, definition: entry.definition ?? null, created_at: entry.createdAt })
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to add vocab word", error);
+          showToast("Couldn't save — check your connection");
+          void loadVocabWords();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, showToast]);
+
+  const updateVocabWord = useCallback((id: string, patch: { word?: string; definition?: string }) => {
+    setVocabWords((prev) =>
+      prev.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              word: patch.word !== undefined ? patch.word.trim() || w.word : w.word,
+              definition: patch.definition !== undefined ? patch.definition.trim() || undefined : w.definition,
+            }
+          : w,
+      ),
+    );
+    const db: Record<string, unknown> = {};
+    if (patch.word !== undefined) db.word = patch.word.trim();
+    if (patch.definition !== undefined) db.definition = patch.definition.trim() || null;
+    if (Object.keys(db).length === 0) return;
+    void supabase
+      .from("vocab_words")
+      .update(db)
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to update vocab word", error);
+          showToast("Couldn't save — check your connection");
+          void loadVocabWords();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
+
+  const deleteVocabWord = useCallback((id: string) => {
+    setVocabWords((prev) => prev.filter((w) => w.id !== id));
+    void supabase
+      .from("vocab_words")
+      .delete()
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to delete vocab word", error);
+          showToast("Couldn't save — check your connection");
+          void loadVocabWords();
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -1107,6 +1201,7 @@ export function AppStateProvider({
       libFilter, setLibFilter,
       query, setQuery,
       selectedNoteId, openNote, updateNote, addPodcastEpisode, savePodcastEpisode,
+      vocabWords, addVocabWord, updateVocabWord, deleteVocabWord,
       selectedProjectId, openProject,
       capture, draft, setDraft, openCapture, closeCapture, submitCapture,
       deleteNote,
@@ -1121,6 +1216,7 @@ export function AppStateProvider({
       categories,
       libFilter, query,
       selectedNoteId, openNote, updateNote, addPodcastEpisode, savePodcastEpisode,
+      vocabWords, addVocabWord, updateVocabWord, deleteVocabWord,
       selectedProjectId, openProject,
       capture, draft, openCapture, closeCapture, submitCapture,
       deleteNote,

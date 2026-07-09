@@ -6,7 +6,9 @@ import { useAppState } from "../state/AppState";
 import PageHeader from "../components/PageHeader";
 import TaskRow from "../components/TaskRow";
 import FlashcardsScreen from "./FlashcardsScreen";
+import EnglishFlashcardsScreen from "./EnglishFlashcardsScreen";
 import PodcastNotesScreen from "./PodcastNotesScreen";
+import VocabularyScreen from "./VocabularyScreen";
 import type { Project, ProjectGroup, ProjectType } from "../types";
 
 // "Practice" is rendered as its own always-visible section (below), so it's
@@ -268,22 +270,74 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
 // bottom-nav tab — one less tab, and a natural home next to future
 // skill-building projects.
 
+// Flashcards now covers two decks — a chooser (styled as a simple
+// navigational list) picks between them before either deck's screen loads.
+type FlashDeck = "english" | "urdu" | null;
+
+function FlashDeckChooser({ onChoose }: { onChoose: (deck: FlashDeck) => void }) {
+  return (
+    <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
+      <Text style={styles.chooserLabel}>Choose a deck to study</Text>
+      <View style={styles.chooserList}>
+        <Pressable style={styles.chooserRow} onPress={() => onChoose("english")}>
+          <Text style={styles.chooserChevron}>›</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.chooserTitle}>English Vocabulary</Text>
+            <Text style={styles.chooserSubtitle}>Words collected from reading</Text>
+          </View>
+        </Pressable>
+        <Pressable style={[styles.chooserRow, styles.chooserRowLast]} onPress={() => onChoose("urdu")}>
+          <Text style={styles.chooserChevron}>›</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.chooserTitle}>Urdu Flashcards</Text>
+            <Text style={styles.chooserSubtitle}>Elementary Urdu II</Text>
+          </View>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function FlashcardsModal({ onClose }: { onClose: () => void }) {
+  const [deck, setDeck] = useState<FlashDeck>(null);
+  const title = deck === "english" ? "English Vocabulary" : deck === "urdu" ? "Urdu Flashcards" : "Flashcards";
+  const dotColor = deck === "english" ? "#0d9488" : "#b23a2e";
+
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.sheetWrap}>
         <View style={styles.sheetHandle} />
         <View style={styles.sheetHeader}>
-          <View style={[styles.dot, { backgroundColor: "#b23a2e" }]} />
-          <Text style={styles.sheetTitle}>Urdu Flashcards</Text>
+          {deck ? (
+            <Pressable onPress={() => setDeck(null)} hitSlop={8}>
+              <Text style={styles.decksBack}>‹ Decks</Text>
+            </Pressable>
+          ) : (
+            <View style={[styles.dot, { backgroundColor: dotColor }]} />
+          )}
+          <Text style={styles.sheetTitle}>{title}</Text>
           <Pressable onPress={onClose} hitSlop={12}>
             <Text style={styles.sheetClose}>✕</Text>
           </Pressable>
         </View>
-        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
-          <FlashcardsScreen />
-        </ScrollView>
+        {deck === null ? (
+          <FlashDeckChooser onChoose={setDeck} />
+        ) : (
+          <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
+            {deck === "english" ? <EnglishFlashcardsScreen /> : <FlashcardsScreen />}
+          </ScrollView>
+        )}
       </View>
+    </Modal>
+  );
+}
+
+// ── practice: english vocabulary ────────────────────────────────────────────────
+
+function VocabularyModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <VocabularyScreen onClose={onClose} />
     </Modal>
   );
 }
@@ -307,6 +361,7 @@ export default function ProjectsScreen() {
   const { projects, selectedProjectId, openProject } = useAppState();
   const [showNew, setShowNew] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
+  const [showVocabulary, setShowVocabulary] = useState(false);
   const [showPodcasts, setShowPodcasts] = useState(false);
   const groups = useMemo(() => groupProjects(projects), [projects]);
   const practiceProjects = useMemo(() => projects.filter((p) => p.group === "Practice"), [projects]);
@@ -337,14 +392,22 @@ export default function ProjectsScreen() {
         </View>
       ))}
 
-      {/* Practice — always shown (Flashcards + Podcast Notes live here), unlike the groups above */}
+      {/* Practice — always shown (Flashcards + Vocabulary + Podcast Notes live here), unlike the groups above */}
       <View>
-        <Text style={styles.groupLabel}>{`Practice · ${practiceProjects.length + 2}`}</Text>
+        <Text style={styles.groupLabel}>{`Practice · ${practiceProjects.length + 3}`}</Text>
         <Pressable style={styles.row} onPress={() => setShowFlashcards(true)}>
           <View style={[styles.dot, { backgroundColor: "#b23a2e" }]} />
           <View style={styles.body}>
-            <Text style={styles.name}>Urdu Flashcards</Text>
-            <Text style={styles.meta}>Elementary Urdu II</Text>
+            <Text style={styles.name}>Flashcards</Text>
+            <Text style={styles.meta}>English Vocabulary or Urdu</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+        <Pressable style={styles.row} onPress={() => setShowVocabulary(true)}>
+          <View style={[styles.dot, { backgroundColor: "#0d9488" }]} />
+          <View style={styles.body}>
+            <Text style={styles.name}>English Vocabulary</Text>
+            <Text style={styles.meta}>Word list & definitions</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </Pressable>
@@ -375,6 +438,7 @@ export default function ProjectsScreen() {
       {selectedProject ? <ProjectDetail project={selectedProject} onClose={() => openProject(null)} /> : null}
       {showNew ? <NewProjectModal onClose={() => setShowNew(false)} /> : null}
       {showFlashcards ? <FlashcardsModal onClose={() => setShowFlashcards(false)} /> : null}
+      {showVocabulary ? <VocabularyModal onClose={() => setShowVocabulary(false)} /> : null}
       {showPodcasts ? <PodcastNotesModal onClose={() => setShowPodcasts(false)} /> : null}
     </View>
   );
@@ -427,6 +491,23 @@ const styles = StyleSheet.create({
   sheetTitle: { flex: 1, fontFamily: fonts.sansMedium, fontSize: 18, color: colors.textPrimary },
   sheetClose: { fontFamily: fonts.sans, fontSize: 16, color: colors.textTertiary },
   sheetMeta: { fontFamily: fonts.mono, fontSize: 11, color: colors.textTertiary, paddingHorizontal: 20, paddingTop: 10 },
+  decksBack: { fontFamily: fonts.monoMedium, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase", color: colors.textSecondary },
+  chooserLabel: { fontFamily: fonts.sans, fontSize: 13, color: colors.textSecondary, marginTop: 16, marginBottom: 12 },
+  chooserList: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: "hidden" },
+  chooserRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  chooserRowLast: { borderBottomWidth: 0 },
+  chooserChevron: { fontFamily: fonts.mono, fontSize: 14, color: colors.textTertiary, marginTop: 2 },
+  chooserTitle: { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.textPrimary },
+  chooserSubtitle: { fontFamily: fonts.sans, fontSize: 12.5, color: colors.textSecondary, marginTop: 2 },
   sheetScroll: { flex: 1 },
   sheetContent: { paddingHorizontal: 20, paddingBottom: 60 },
   hoursRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 20 },

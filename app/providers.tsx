@@ -10,6 +10,7 @@ import { PeopleStoreProvider } from "@/components/PeopleStore";
 import { ProjectStoreProvider } from "@/components/ProjectStore";
 import { RoutineStoreProvider } from "@/components/RoutineStore";
 import { TaskStoreProvider } from "@/components/TaskStore";
+import { VocabStoreProvider } from "@/components/VocabStore";
 
 /** Renders the signed-out screen, or the data stores once a session exists. */
 function Gate({ children }: { children: React.ReactNode }) {
@@ -24,7 +25,9 @@ function Gate({ children }: { children: React.ReactNode }) {
         <PeopleStoreProvider>
           <LibraryStoreProvider>
             <BudgetStoreProvider>
-              <TaskStoreProvider>{children}</TaskStoreProvider>
+              <VocabStoreProvider>
+                <TaskStoreProvider>{children}</TaskStoreProvider>
+              </VocabStoreProvider>
             </BudgetStoreProvider>
           </LibraryStoreProvider>
         </PeopleStoreProvider>

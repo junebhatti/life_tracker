@@ -143,7 +143,7 @@ export default function ProjectsPage() {
               return (
                 <section>
                   <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">
-                    Practice · {practiceProjects.length + 2}
+                    Practice · {practiceProjects.length + 3}
                   </h2>
                   <div className="flex flex-col">
                     <Link
@@ -152,10 +152,22 @@ export default function ProjectsPage() {
                     >
                       <div className="flex items-center gap-2 px-2">
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#b23a2e]" aria-hidden="true" />
-                        <span className="text-lg font-medium text-foreground">Urdu Flashcards</span>
+                        <span className="text-lg font-medium text-foreground">Flashcards</span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pl-6 text-[11px] uppercase tracking-wide text-muted">
-                        <span>Elementary Urdu II</span>
+                        <span>English Vocabulary or Urdu</span>
+                      </div>
+                    </Link>
+                    <Link
+                      href="/vocabulary"
+                      className="border-b border-border py-3 transition-colors hover:bg-hover"
+                    >
+                      <div className="flex items-center gap-2 px-2">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#0d9488]" aria-hidden="true" />
+                        <span className="text-lg font-medium text-foreground">English Vocabulary</span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pl-6 text-[11px] uppercase tracking-wide text-muted">
+                        <span>Word list & definitions</span>
                       </div>
                     </Link>
                     <Link
