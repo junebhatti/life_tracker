@@ -19,7 +19,7 @@ const FILTER_TYPE: Record<(typeof FILTERS)[number], ScrapItem["type"]> = {
 // so panning starts from a view that actually shows content instead of the
 // gap between columns.
 const CANVAS_ORIGIN = { tx: 20, ty: 20 };
-const CARD_W = 130;
+const CARD_W = 112;
 
 function itemHeight(item: ScrapItem): number {
   if (item.h && item.w) return Math.round(CARD_W * (item.h / item.w));

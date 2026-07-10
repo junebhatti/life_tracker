@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/components/AuthProvider";
-import { NAV_ITEMS } from "@/lib/data";
 import type { ScrapItemRow } from "@/app/api/scrapbook/route";
 
 const ARIAL = "Arial, Helvetica, sans-serif";
@@ -17,42 +15,57 @@ const FILTER_TYPE: Record<(typeof FILTERS)[number], ScrapItemRow["type"]> = {
   Journal: "note",
 };
 
-// ── sidebar (distinct sub-brand treatment — same real nav, restyled) ─────────
+// ── canvas cards + scattered layout ──────────────────────────────────────────
 
-function ScrapbookSidebar() {
-  const pathname = usePathname();
-  return (
-    <div style={{ width: 130, flex: "none", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 12, borderRight: "1px solid #e2e2e2" }}>
-      {NAV_ITEMS.map((item) => {
-        const active = pathname === item.href;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            style={{ fontFamily: ARIAL, fontSize: 12.5, lineHeight: 1.3, fontWeight: active ? 700 : 400, color: active ? BLUE : "#222" }}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
-    </div>
-  );
+// The collection lives on an infinite pan/zoom canvas (Figma-style) instead
+// of a scrolling grid. Cards share one fixed width but keep a hint of their
+// own aspect ratio, and columns are staggered/jittered so the wall reads as
+// a loose scatter rather than rigid rows.
+const CANVAS_CARD_W = 130;
+const SCATTER_COLS = 5;
+const SCATTER_COL_SPACING = 180;
+// Fixed per-column head starts so the top edge is uneven from the first row.
+const SCATTER_STAGGER = [0, 52, 22, 68, 34];
+
+function hashNum(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+  return h;
 }
 
-// ── item cards (full-width, masonry-flow) ────────────────────────────────────
+function imgHeight(item: ScrapItemRow): number {
+  const aspect = item.w && item.h ? item.h / item.w : 1;
+  return Math.round(Math.min(175, Math.max(90, CANVAS_CARD_W * aspect)));
+}
 
-// Every card gets the same footprint — a uniform square thumbnail (or a
-// text card sized to match) — so the grid reads as a tidy portfolio index
-// instead of a jumble of different-sized boxes.
+/** Full card footprint (image + caption, or fixed text card) — the layout
+ *  stacks columns with this, so it must match what ItemCard renders. */
+function itemCardHeight(item: ScrapItemRow): number {
+  if (item.type === "img") return imgHeight(item) + 22;
+  return 112;
+}
+
+function buildScatterLayout(items: ScrapItemRow[]): { item: ScrapItemRow; x: number; y: number }[] {
+  const ys = [...SCATTER_STAGGER];
+  return items.map((item, i) => {
+    const c = i % SCATTER_COLS;
+    const x = c * SCATTER_COL_SPACING + ((hashNum(item.id) % 28) - 14);
+    const y = ys[c];
+    ys[c] += itemCardHeight(item) + 30 + (hashNum(item.id + "v") % 26);
+    return { item, x, y };
+  });
+}
+
 function ItemCard({ item, onClick }: { item: ScrapItemRow; onClick: () => void }) {
   if (item.type === "img") {
+    const h = imgHeight(item);
     return (
-      <div onClick={onClick} style={{ cursor: "pointer" }}>
+      <div onClick={onClick} style={{ cursor: "pointer", width: CANVAS_CARD_W }}>
         {item.url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.url} alt={item.label ?? ""} style={{ display: "block", width: "100%", aspectRatio: "1", objectFit: "cover" }} />
+          <img src={item.url} alt={item.label ?? ""} draggable={false} style={{ display: "block", width: "100%", height: h, objectFit: "cover" }} />
         ) : (
-          <div style={{ width: "100%", aspectRatio: "1", background: "#ede8e2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: "100%", height: h, background: "#ede8e2", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span style={{ fontFamily: ARIAL, fontSize: 10, color: "#8a8783", padding: "0 8px", textAlign: "center" }}>{item.label}</span>
           </div>
         )}
@@ -63,8 +76,8 @@ function ItemCard({ item, onClick }: { item: ScrapItemRow; onClick: () => void }
 
   if (item.type === "quote") {
     return (
-      <div onClick={onClick} style={{ cursor: "pointer", background: "#f7f4ef", padding: 10, aspectRatio: "1", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
-        <p style={{ fontFamily: ARIAL, fontStyle: "italic", fontSize: 11, lineHeight: 1.4, color: "#222", margin: 0 }}>&ldquo;{item.text}&rdquo;</p>
+      <div onClick={onClick} style={{ cursor: "pointer", width: CANVAS_CARD_W, height: 112, background: "#f7f4ef", padding: 10, display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
+        <p style={{ fontFamily: ARIAL, fontStyle: "italic", fontSize: 10.5, lineHeight: 1.4, color: "#222", margin: 0 }}>&ldquo;{item.text}&rdquo;</p>
         {item.source && (
           <p style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 9.5, color: BLUE, margin: "6px 0 0" }}>{item.source}</p>
         )}
@@ -73,8 +86,8 @@ function ItemCard({ item, onClick }: { item: ScrapItemRow; onClick: () => void }
   }
 
   return (
-    <div onClick={onClick} style={{ cursor: "pointer", background: "#fff8d6", padding: 10, aspectRatio: "1", display: "flex", alignItems: "center", overflow: "hidden" }}>
-      <p style={{ fontFamily: ARIAL, fontSize: 11, lineHeight: 1.4, color: "#222", margin: 0 }}>{item.text}</p>
+    <div onClick={onClick} style={{ cursor: "pointer", width: CANVAS_CARD_W, height: 112, background: "#fff8d6", padding: 10, display: "flex", alignItems: "center", overflow: "hidden" }}>
+      <p style={{ fontFamily: ARIAL, fontSize: 10.5, lineHeight: 1.4, color: "#222", margin: 0 }}>{item.text}</p>
     </div>
   );
 }
@@ -471,9 +484,105 @@ export default function ScrapbookPage() {
       ? items
       : items.filter((it) => [...activeFilters].some((f) => FILTER_TYPE[f as (typeof FILTERS)[number]] === it.type));
 
+  // ── infinite canvas: pan, zoom toward cursor, drag cards to rearrange ────
+
+  const [cam, setCam] = useState({ tx: 40, ty: 24, scale: 1 });
+  const dragRef = useRef<
+    | { kind: "pan"; mx: number; my: number; tx: number; ty: number }
+    | { kind: "item"; id: string; mx: number; my: number; startX: number; startY: number }
+    | null
+  >(null);
+  const movedRef = useRef(0);
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  const MIN_SCALE = 0.05;
+  const MAX_SCALE = 10;
+
+  // A card keeps its stored x/y once the user has dragged it on THIS canvas.
+  // "Placed here" is marked by a non-null `rot` (unused visually since the
+  // grid redesign; drags save rot alongside x/y). Coordinates left over from
+  // the retired freeform-canvas era all have rot null, so everything starts
+  // in the clean auto-scatter instead of wherever it sat years of layouts ago.
+  const slotById = new Map<string, { x: number; y: number }>();
+  buildScatterLayout(visibleItems).forEach(({ item, x, y }) => slotById.set(item.id, { x, y }));
+  const positioned = visibleItems.map((item) => {
+    const placed = item.rot !== null && item.rot !== undefined;
+    const pos = placed ? { x: item.x, y: item.y } : slotById.get(item.id)!;
+    return { item, ...pos };
+  });
+
+  function onCanvasMouseDown(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    dragRef.current = { kind: "pan", mx: e.clientX, my: e.clientY, tx: cam.tx, ty: cam.ty };
+    movedRef.current = 0;
+  }
+
+  function onItemMouseDown(e: React.MouseEvent, item: ScrapItemRow, x: number, y: number) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    dragRef.current = { kind: "item", id: item.id, mx: e.clientX, my: e.clientY, startX: x, startY: y };
+    movedRef.current = 0;
+  }
+
+  function onCanvasMouseMove(e: React.MouseEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.mx;
+    const dy = e.clientY - d.my;
+    movedRef.current = Math.max(movedRef.current, Math.abs(dx) + Math.abs(dy));
+    if (d.kind === "pan") {
+      setCam((c) => ({ ...c, tx: d.tx + dx, ty: d.ty + dy }));
+    } else {
+      // Setting rot here (not just on mouseup) flips the card to "placed"
+      // immediately, so it tracks the pointer instead of snapping back to
+      // its scatter slot until release.
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === d.id
+            ? { ...it, x: d.startX + dx / cam.scale, y: d.startY + dy / cam.scale, rot: it.rot ?? 0 }
+            : it,
+        ),
+      );
+    }
+  }
+
+  function onCanvasMouseUp() {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (d?.kind === "item" && movedRef.current >= 5) {
+      const it = items.find((i) => i.id === d.id);
+      if (it) void saveItem(it.id, { x: Math.round(it.x), y: Math.round(it.y), rot: it.rot ?? 0 });
+    }
+  }
+
+  function zoomAt(factor: number, px: number, py: number) {
+    setCam((c) => {
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, c.scale * factor));
+      if (next === c.scale) return c;
+      const ratio = next / c.scale;
+      return { scale: next, tx: px - (px - c.tx) * ratio, ty: py - (py - c.ty) * ratio };
+    });
+  }
+
+  function onCanvasWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    zoomAt(Math.exp(-e.deltaY * 0.0018), e.clientX - rect.left, e.clientY - rect.top);
+  }
+
+  function zoomBy(factor: number) {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    zoomAt(factor, rect ? rect.width / 2 : 0, rect ? rect.height / 2 : 0);
+  }
+
+  function recenter() {
+    setCam({ tx: 40, ty: 24, scale: 1 });
+  }
+
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#fff", fontFamily: ARIAL }}>
-      <ScrapbookSidebar />
+      <Sidebar />
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ flex: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "20px 60px 16px", borderBottom: "1px solid #e2e2e2" }}>
@@ -514,24 +623,72 @@ export default function ScrapbookPage() {
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}>
-          {loading ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+        <div
+          ref={viewportRef}
+          onMouseDown={onCanvasMouseDown}
+          onMouseMove={onCanvasMouseMove}
+          onMouseUp={onCanvasMouseUp}
+          onMouseLeave={onCanvasMouseUp}
+          onWheel={onCanvasWheel}
+          style={{ flex: 1, position: "relative", overflow: "hidden", cursor: "grab", userSelect: "none", background: "#fff" }}
+        >
+          {loading && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div className="animate-spin" style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid #e2e2e2", borderTopColor: BLUE }} />
             </div>
-          ) : visibleItems.length === 0 ? (
-            <p style={{ fontFamily: ARIAL, fontSize: 13, color: "#8a8783", textAlign: "center", marginTop: 60 }}>
+          )}
+
+          {!loading && visibleItems.length === 0 && (
+            <p style={{ position: "absolute", inset: "60px 0 auto", fontFamily: ARIAL, fontSize: 13, color: "#8a8783", textAlign: "center", pointerEvents: "none" }}>
               {items.length === 0 ? "Your scrapbook is empty — click + Add to begin." : "No items match this filter."}
             </p>
-          ) : (
-            <div style={{ columns: "5 100px", columnGap: 10 }}>
-              {visibleItems.map((item) => (
-                <div key={item.id} style={{ breakInside: "avoid", marginBottom: 14, width: "100%" }}>
-                  <ItemCard item={item} onClick={() => setEditItem(item)} />
-                </div>
-              ))}
-            </div>
           )}
+
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              transform: `translate(${cam.tx}px, ${cam.ty}px) scale(${cam.scale})`,
+              transformOrigin: "0 0",
+              willChange: "transform",
+            }}
+          >
+            {positioned.map(({ item, x, y }) => (
+              <div key={item.id} onMouseDown={(e) => onItemMouseDown(e, item, x, y)} style={{ position: "absolute", left: x, top: y }}>
+                <ItemCard item={item} onClick={() => { if (movedRef.current < 5) setEditItem(item); }} />
+              </div>
+            ))}
+          </div>
+
+          <p style={{ position: "absolute", left: 14, bottom: 12, fontFamily: ARIAL, fontSize: 10.5, color: "#b0b0b0", margin: 0, pointerEvents: "none" }}>
+            drag to pan · scroll to zoom · drag a card to move it
+          </p>
+
+          <div onMouseDown={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => zoomBy(1.3)}
+              style={{ width: 34, height: 34, borderRadius: "50%", border: `1px solid ${BLUE}`, background: "#fff", color: BLUE, fontFamily: ARIAL, fontSize: 17, cursor: "pointer", lineHeight: 1 }}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={recenter}
+              title="Recenter"
+              style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: BLUE, color: "#fff", fontFamily: ARIAL, fontSize: 13, cursor: "pointer", lineHeight: 1, boxShadow: "0 4px 12px rgba(35,35,232,.35)" }}
+            >
+              ◎
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomBy(1 / 1.3)}
+              style={{ width: 34, height: 34, borderRadius: "50%", border: `1px solid ${BLUE}`, background: "#fff", color: BLUE, fontFamily: ARIAL, fontSize: 17, cursor: "pointer", lineHeight: 1 }}
+            >
+              −
+            </button>
+          </div>
         </div>
       </div>
 

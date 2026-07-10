@@ -5,59 +5,61 @@ import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/lib/data";
 import { useAuth } from "./AuthProvider";
 
+const ARIAL = "Arial, Helvetica, sans-serif";
+const BLUE = "#2323e8";
+
+// Compact Scrapbook-style nav — plain small Arial text on white, the active
+// item bold + blue. The Scrapbook page's sidebar is the design prototype for
+// the whole site, so this is that treatment applied globally.
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
 
+  const linkStyle = (active: boolean): React.CSSProperties => ({
+    fontFamily: ARIAL,
+    fontSize: 12.5,
+    lineHeight: 1.3,
+    fontWeight: active ? 700 : 400,
+    color: active ? BLUE : "#222",
+  });
+
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-sidebar px-3 py-5">
-      <div className="px-2 pb-6">
-        <h1 className="text-[15px] font-semibold leading-tight text-foreground">
+    <aside
+      className="flex shrink-0 flex-col"
+      style={{ width: 140, padding: "20px 16px", borderRight: "1px solid #e2e2e2", background: "#fff" }}
+    >
+      <div style={{ paddingBottom: 22 }}>
+        <h1 style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 13, letterSpacing: "0.02em", color: "#222", margin: 0 }}>
           Operations
         </h1>
-        <p className="text-[11px] uppercase tracking-wide text-muted">
+        <p style={{ fontFamily: ARIAL, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#8a8783", margin: "3px 0 0" }}>
           Life Tracker
         </p>
       </div>
 
-      <nav className="flex flex-col gap-0.5">
+      <nav style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {NAV_ITEMS.map((item) => {
           const active =
             item.href === "/"
               ? pathname === "/"
               : pathname.startsWith(item.href);
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`rounded-md px-2 py-1.5 text-sm transition-colors ${
-                active
-                  ? "bg-hover font-medium text-[#2323e8]"
-                  : "text-neutral-600 hover:bg-hover"
-              }`}
-            >
+            <Link key={item.href} href={item.href} style={linkStyle(active)}>
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      <nav className="mt-auto flex flex-col gap-0.5 border-t border-border pt-2">
-        <Link
-          href="/settings"
-          className={`rounded-md px-2 py-1.5 text-sm transition-colors ${
-            pathname.startsWith("/settings")
-              ? "bg-hover font-medium text-[#2323e8]"
-              : "text-neutral-600 hover:bg-hover"
-          }`}
-        >
+      <nav style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid #e2e2e2", paddingTop: 14 }}>
+        <Link href="/settings" style={linkStyle(pathname.startsWith("/settings"))}>
           Settings
         </Link>
         {user && (
           <button
             type="button"
             onClick={() => signOut()}
-            className="rounded-md px-2 py-1.5 text-left text-sm text-neutral-600 transition-colors hover:bg-hover"
+            style={{ ...linkStyle(false), background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer" }}
           >
             Sign out
           </button>
