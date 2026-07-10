@@ -1,13 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import Svg, { Path } from "react-native-svg";
-import { colors, fonts } from "../theme";
-import PageHeader from "../components/PageHeader";
+import React, { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { URDU_CARDS, URDU_CATEGORIES, type UrduCard } from "../data/urduCards";
 
-const STORAGE_KEY = "urdu_mastered";
 const URDU_FONT = "NotoNastaliqUrdu_400Regular";
+const SERIF = "Times New Roman";
+
+const STORAGE_KEY = "urdu_mastered";
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -18,261 +16,267 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+/** Splices the current card out and reinserts it `gap` positions ahead, so it
+ *  resurfaces sooner ("no idea") or later ("needs work") without leaving the deck. */
+function requeueDeck<T>(deck: T[], index: number, gap: number): { deck: T[]; index: number } {
+  if (!deck.length) return { deck, index };
+  const card = deck[index];
+  const rest = [...deck.slice(0, index), ...deck.slice(index + 1)];
+  const insertAt = Math.min(rest.length, index + gap);
+  rest.splice(insertAt, 0, card);
+  const nextIndex = rest.length ? index % rest.length : 0;
+  return { deck: rest, index: nextIndex };
+}
+
+function loadMastered(): Set<string> {
+  try {
+    if (typeof localStorage === "undefined") return new Set();
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function persistMastered(next: Set<string>) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
+  } catch {
+    // ignore
+  }
+}
+
+function buildDeck(cat: string, mastered: Set<string>): UrduCard[] {
+  const base = cat === "All" ? URDU_CARDS : URDU_CARDS.filter((c) => c.cat === cat);
+  return base.filter((c) => !mastered.has(c.id));
+}
+
 export default function FlashcardsScreen() {
-  const [cat, setCat] = useState<string>("All");
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [mastered, setMastered] = useState<Set<string>>(new Set());
-  const [order, setOrder] = useState<string[] | null>(null); // shuffle order of ids, null = natural
+  const [cat, setCat] = useState("All");
+  const [catMenuOpen, setCatMenuOpen] = useState(false);
+  const [mastered, setMastered] = useState<Set<string>>(() => loadMastered());
+  const [ds, setDs] = useState<{ deck: UrduCard[]; index: number; flipped: boolean }>(() => ({
+    deck: buildDeck("All", loadMastered()),
+    index: 0,
+    flipped: false,
+  }));
+  const [sessNoIdea, setSessNoIdea] = useState(0);
+  const [sessNeedsWork, setSessNeedsWork] = useState(0);
 
-  const flipAnim = useRef(new Animated.Value(0)).current;
-
-  // Load persisted mastered set once.
-  useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => {
-        if (raw) setMastered(new Set(JSON.parse(raw) as string[]));
-      })
-      .catch(() => {});
-  }, []);
-
-  function persist(next: Set<string>) {
-    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
-  }
-
-  // Deck = cards in the active category, excluding mastered, in the current order.
-  const deck = useMemo(() => {
-    let cards = URDU_CARDS.filter((c) => cat === "All" || c.cat === cat);
-    cards = cards.filter((c) => !mastered.has(c.id));
-    if (order) {
-      const pos = new Map(order.map((id, i) => [id, i]));
-      cards = [...cards].sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
-    }
-    return cards;
-  }, [cat, mastered, order]);
-
-  const total = useMemo(() => URDU_CARDS.filter((c) => cat === "All" || c.cat === cat).length, [cat]);
-  const masteredInCat = total - deck.length;
-
-  const safeIndex = deck.length ? Math.min(index, deck.length - 1) : 0;
-  const card: UrduCard | undefined = deck[safeIndex];
-
-  function resetFlip() {
-    flipAnim.setValue(0);
-    setFlipped(false);
-  }
-
-  function doFlip() {
-    Animated.timing(flipAnim, {
-      toValue: flipped ? 0 : 1,
-      duration: 450,
-      easing: Easing.bezier(0.4, 0, 0.2, 1),
-      useNativeDriver: true,
-    }).start();
-    setFlipped((f) => !f);
-  }
+  const total = ds.deck.length;
+  const card = total ? ds.deck[ds.index] : null;
+  const progressPct = total === 0 ? 100 : Math.round((ds.index / Math.max(1, total)) * 100);
 
   function selectCat(c: string) {
     setCat(c);
-    setIndex(0);
-    resetFlip();
+    setDs({ deck: buildDeck(c, mastered), index: 0, flipped: false });
+    setCatMenuOpen(false);
   }
-  function next() {
-    if (!deck.length) return;
-    setIndex((i) => (i + 1) % deck.length);
-    resetFlip();
+
+  function flip() {
+    setDs((s) => ({ ...s, flipped: !s.flipped }));
   }
+
   function prev() {
-    if (!deck.length) return;
-    setIndex((i) => (i - 1 + deck.length) % deck.length);
-    resetFlip();
+    setDs((s) => {
+      if (!s.deck.length) return s;
+      const n = Math.max(1, s.deck.length);
+      return { ...s, index: (s.index - 1 + n) % n, flipped: false };
+    });
   }
-  function toggleMastered() {
-    if (!card) return;
-    const nextSet = new Set(mastered);
-    if (nextSet.has(card.id)) nextSet.delete(card.id);
-    else nextSet.add(card.id);
-    setMastered(nextSet);
-    persist(nextSet);
-    resetFlip();
+
+  function requeue(gap: number) {
+    setDs((s) => {
+      const { deck, index } = requeueDeck(s.deck, s.index, gap);
+      return { deck, index, flipped: false };
+    });
   }
+
+  function noIdea() {
+    setSessNoIdea((n) => n + 1);
+    requeue(2);
+  }
+
+  function needsWork() {
+    setSessNeedsWork((n) => n + 1);
+    requeue(6);
+  }
+
+  function markMastered() {
+    if (!ds.deck.length) return;
+    const c = ds.deck[ds.index];
+    const nextMastered = new Set(mastered);
+    nextMastered.add(c.id);
+    persistMastered(nextMastered);
+    setMastered(nextMastered);
+    const deck = buildDeck(cat, nextMastered);
+    setDs({ deck, index: Math.min(ds.index, Math.max(0, deck.length - 1)), flipped: false });
+  }
+
   function doShuffle() {
-    setOrder(shuffle(deck.map((c) => c.id)));
-    setIndex(0);
-    resetFlip();
+    setDs((s) => ({ deck: shuffle(s.deck), index: 0, flipped: false }));
   }
+
   function doReset() {
     const empty = new Set<string>();
+    persistMastered(empty);
     setMastered(empty);
-    persist(empty);
-    setOrder(null);
-    setIndex(0);
-    resetFlip();
+    setDs({ deck: buildDeck(cat, empty), index: 0, flipped: false });
   }
-
-  const frontRotate = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] });
-  const backRotate = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "360deg"] });
-
-  const isMastered = card ? mastered.has(card.id) : false;
-  const progressPct = total ? Math.round((masteredInCat / total) * 100) : 0;
 
   return (
     <View>
-      <PageHeader label="Elementary Urdu II" title="Flashcards" sub={`${masteredInCat} of ${total} mastered`} />
+      <View style={styles.headerRow}>
+        <Text style={styles.h1}>Urdu</Text>
+        <Text style={styles.remaining}>{total} remaining</Text>
+      </View>
 
-      {/* category chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipsContent}>
-        {URDU_CATEGORIES.map((c) => {
-          const active = cat === c;
-          return (
-            <Pressable key={c} style={[styles.chip, active && styles.chipActive]} onPress={() => selectCat(c)}>
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{c}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <View style={styles.catWrap}>
+        <Pressable onPress={() => setCatMenuOpen((v) => !v)} hitSlop={6}>
+          <Text style={styles.catLabel}>
+            {cat} {catMenuOpen ? "▴" : "▾"}
+          </Text>
+        </Pressable>
+        {catMenuOpen && (
+          <View style={styles.catMenu}>
+            {URDU_CATEGORIES.map((c) => (
+              <Pressable key={c} onPress={() => selectCat(c)} hitSlop={4}>
+                <Text style={[styles.catMenuItem, cat === c && styles.catMenuItemActive]}>{c}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </View>
 
-      {/* progress */}
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
       </View>
+      <Text style={styles.masteredLabel}>{mastered.size} mastered</Text>
 
-      {/* flip card */}
-      {card ? (
-        <Pressable onPress={doFlip} style={styles.scene}>
-          <Animated.View style={[styles.face, styles.front, { transform: [{ perspective: 900 }, { rotateY: frontRotate }] }]}>
-            <Text style={styles.catLabel}>{card.cat}</Text>
-            <Text style={styles.urdu}>{card.urdu}</Text>
-            <Text style={styles.reveal}>Tap to reveal</Text>
-          </Animated.View>
-          <Animated.View style={[styles.face, styles.back, { transform: [{ perspective: 900 }, { rotateY: backRotate }] }]}>
-            <Text style={styles.english}>{card.english}</Text>
-            <Text style={styles.roman}>{card.roman}</Text>
-          </Animated.View>
+      <Pressable onPress={flip} style={styles.scene}>
+        <View
+          style={[
+            styles.cardInner,
+            { transform: [{ perspective: 900 }, { rotateY: ds.flipped ? "180deg" : "0deg" }] },
+            // RN's ViewStyle type doesn't know about transform-style, but this app
+            // only ever runs via react-native-web, which passes it straight to CSS —
+            // without it, backface-visibility can't hide the reverse face on flip.
+            { transformStyle: "preserve-3d" } as object,
+          ]}
+        >
+          <View style={[styles.face, styles.faceFront]}>
+            <Text style={styles.urduFront}>{card ? card.urdu : "—"}</Text>
+            <Text style={styles.tapReveal}>tap to reveal</Text>
+          </View>
+          <View style={[styles.face, styles.faceBack, { transform: [{ rotateY: "180deg" }] }]}>
+            <Text style={styles.urduBack}>{card ? card.urdu : "—"}</Text>
+            <Text style={styles.roman}>{card ? card.roman : ""}</Text>
+            <Text style={styles.english}>{card ? card.english : "Done!"}</Text>
+          </View>
+        </View>
+      </Pressable>
+
+      <Text style={styles.position}>{total ? `${ds.index + 1} / ${total}` : "All mastered!"}</Text>
+
+      <View style={styles.controls}>
+        <Pressable onPress={prev} hitSlop={8}>
+          <Text style={styles.prevLink}>‹ Prev</Text>
         </Pressable>
-      ) : (
-        <View style={styles.doneCard}>
-          <Text style={styles.doneText}>All caught up!</Text>
-          <Text style={styles.doneSub}>Every card in {cat} is mastered.</Text>
-        </View>
-      )}
+        <Pressable onPress={noIdea} hitSlop={8}>
+          <Text style={[styles.gradeLink, { color: "#b23a2e" }]}>No idea</Text>
+        </Pressable>
+        <Pressable onPress={needsWork} hitSlop={8}>
+          <Text style={[styles.gradeLink, { color: "#8a6a3d" }]}>Needs work</Text>
+        </Pressable>
+        <Pressable onPress={markMastered} hitSlop={8}>
+          <Text style={[styles.gradeLink, { color: "#3d6b57" }]}>Mastered</Text>
+        </Pressable>
+      </View>
+      <Text style={styles.hint}>mastered cards are removed from the deck</Text>
 
-      {/* position */}
-      {card ? <Text style={styles.position}>{`${safeIndex + 1} / ${deck.length}`}</Text> : null}
-
-      {/* controls */}
-      {card ? (
-        <View style={styles.controls}>
-          <Pressable style={styles.ctrlBtn} onPress={prev} hitSlop={8}>
-            <Text style={styles.ctrlText}>‹ Prev</Text>
-          </Pressable>
-          <Pressable style={[styles.masterBtn, isMastered && styles.masterBtnActive]} onPress={toggleMastered}>
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-              <Path d="M5 12l5 5L19 7" stroke={isMastered ? "#fff" : colors.textTertiary} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
-            <Text style={[styles.masterText, isMastered && styles.masterTextActive]}>
-              {isMastered ? "Mastered" : "Master"}
-            </Text>
-          </Pressable>
-          <Pressable style={styles.ctrlBtn} onPress={next} hitSlop={8}>
-            <Text style={styles.ctrlText}>Next ›</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      <Text style={styles.hint}>Tap the card to flip · mark cards you know as mastered</Text>
-
+      <View style={styles.hr} />
       <View style={styles.footerRow}>
-        <Pressable style={styles.footerBtn} onPress={doShuffle}>
-          <Text style={styles.footerText}>Shuffle</Text>
+        <Pressable onPress={doShuffle} hitSlop={8}>
+          <Text style={styles.footerLink}>SHUFFLE</Text>
         </Pressable>
-        <Pressable style={styles.footerBtn} onPress={doReset}>
-          <Text style={[styles.footerText, { color: colors.accentRed }]}>Reset progress</Text>
+        <Pressable onPress={doReset} hitSlop={8}>
+          <Text style={[styles.footerLink, { color: "#b23a2e" }]}>RESET</Text>
         </Pressable>
+      </View>
+
+      <View style={styles.hr2} />
+      <Text style={styles.sessionLabel}>This session</Text>
+      <View style={styles.statsRow}>
+        <View style={styles.statCol}>
+          <Text style={[styles.statNum, { color: "#b23a2e" }]}>{sessNoIdea}</Text>
+          <Text style={styles.statLabel}>no idea</Text>
+        </View>
+        <View style={styles.statCol}>
+          <Text style={[styles.statNum, { color: "#8a6a3d" }]}>{sessNeedsWork}</Text>
+          <Text style={styles.statLabel}>needs work</Text>
+        </View>
+        <View style={styles.statCol}>
+          <Text style={[styles.statNum, { color: "#3d6b57" }]}>{mastered.size}</Text>
+          <Text style={styles.statLabel}>mastered</Text>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  chips: { marginTop: 16, marginBottom: 4 },
-  chipsContent: { gap: 6, paddingRight: 20 },
-  chip: { paddingVertical: 6, paddingHorizontal: 11, borderRadius: 6, backgroundColor: colors.chipBg },
-  chipActive: { backgroundColor: colors.surfaceDark },
-  chipText: { fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.6, textTransform: "uppercase", color: colors.chipText },
-  chipTextActive: { color: colors.background },
-  progressTrack: { height: 3, borderRadius: 2, backgroundColor: colors.border, marginTop: 16, overflow: "hidden" },
-  progressFill: { height: 3, borderRadius: 2, backgroundColor: colors.accentRed },
-  scene: { height: 240, marginTop: 22, alignItems: "center", justifyContent: "center" },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
+  h1: { fontFamily: SERIF, fontSize: 27, color: "#2f2f2f", letterSpacing: -0.3 },
+  remaining: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0" },
+
+  catWrap: { marginTop: 20, marginBottom: 22 },
+  catLabel: { fontFamily: SERIF, fontSize: 14, color: "#2f2f2f", textDecorationLine: "underline" },
+  catMenu: { position: "absolute", top: 24, left: 0, zIndex: 6, backgroundColor: "#fdfcfa", borderWidth: 1, borderColor: "#e2dbd2", paddingVertical: 10, paddingHorizontal: 16, gap: 10, minWidth: 150 },
+  catMenuItem: { fontFamily: SERIF, fontSize: 14, color: "#b3aaa0", paddingVertical: 2 },
+  catMenuItemActive: { color: "#2f2f2f", textDecorationLine: "underline" },
+
+  progressTrack: { height: 1, backgroundColor: "#e2dbd2", marginBottom: 4 },
+  progressFill: { height: 1, backgroundColor: "#2f2f2f" },
+  masteredLabel: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", marginTop: 8, marginBottom: 26 },
+
+  scene: { height: 240, alignItems: "center", justifyContent: "center" },
+  cardInner: { width: "100%", maxWidth: 380, height: 240 },
   face: {
     position: "absolute",
     width: "100%",
-    maxWidth: 380,
     height: 240,
-    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 26,
+    backgroundColor: "#fdfcfa",
+    borderWidth: 1,
+    borderColor: "#e2dbd2",
     backfaceVisibility: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 30,
-    elevation: 6,
   },
-  front: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: colors.border },
-  back: { backgroundColor: "#2f2d2b" },
-  catLabel: {
-    position: "absolute",
-    top: 18,
-    fontFamily: fonts.monoMedium,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: "#d4cfc9",
-  },
-  urdu: { fontFamily: URDU_FONT, fontSize: 42, lineHeight: 72, color: colors.textPrimary, writingDirection: "rtl", textAlign: "center", paddingHorizontal: 24 },
-  reveal: {
-    position: "absolute",
-    bottom: 18,
-    fontFamily: fonts.mono,
-    fontSize: 9.5,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: colors.textFaint,
-  },
-  english: { fontFamily: fonts.serif, fontSize: 30, lineHeight: 36, color: "#f6f1ed", textAlign: "center", paddingHorizontal: 24 },
-  roman: { fontFamily: fonts.mono, fontSize: 13, letterSpacing: 0.5, color: "#b3aaa0", marginTop: 12 },
-  doneCard: {
-    height: 240,
-    marginTop: 22,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  doneText: { fontFamily: fonts.serif, fontSize: 24, color: colors.textPrimary },
-  doneSub: { fontFamily: fonts.sans, fontSize: 13, color: colors.textSecondary, marginTop: 6 },
-  position: { fontFamily: fonts.mono, fontSize: 11, color: colors.textTertiary, textAlign: "center", marginTop: 16 },
-  controls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16 },
-  ctrlBtn: { paddingVertical: 10, paddingHorizontal: 8 },
-  ctrlText: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.textPrimary },
-  masterBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  masterBtnActive: { backgroundColor: colors.success, borderColor: colors.success },
-  masterText: { fontFamily: fonts.monoMedium, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase", color: colors.textTertiary },
-  masterTextActive: { color: "#fff" },
-  hint: { fontFamily: fonts.sans, fontSize: 12, color: colors.textTertiary, textAlign: "center", marginTop: 16 },
-  footerRow: { flexDirection: "row", justifyContent: "center", gap: 24, marginTop: 20 },
-  footerBtn: { paddingVertical: 8, paddingHorizontal: 8 },
-  footerText: { fontFamily: fonts.monoMedium, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase", color: colors.textSecondary },
+  faceFront: {},
+  faceBack: {},
+  urduFront: { fontFamily: URDU_FONT, fontSize: 42, lineHeight: 58, color: "#2f2f2f", writingDirection: "rtl", textAlign: "center" },
+  tapReveal: { position: "absolute", bottom: 18, fontFamily: SERIF, fontStyle: "italic", fontSize: 13, letterSpacing: 0.4, color: "#c5bdb5" },
+  urduBack: { fontFamily: URDU_FONT, fontSize: 30, lineHeight: 42, color: "#2f2f2f", writingDirection: "rtl", textAlign: "center" },
+  roman: { fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#a39a90", marginTop: 10 },
+  english: { fontFamily: SERIF, fontSize: 20, lineHeight: 26, color: "#2f2f2f", marginTop: 18, textAlign: "center" },
+
+  position: { fontFamily: SERIF, fontStyle: "italic", fontSize: 13, color: "#b3aaa0", textAlign: "center", marginTop: 18 },
+
+  controls: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18, marginTop: 22, flexWrap: "wrap" },
+  prevLink: { fontFamily: SERIF, fontSize: 15, letterSpacing: 0.4, color: "#a39a90", textDecorationLine: "underline" },
+  gradeLink: { fontFamily: SERIF, fontSize: 16, textDecorationLine: "underline" },
+  hint: { fontFamily: SERIF, fontStyle: "italic", fontSize: 11.5, lineHeight: 15, color: "#c5bdb5", textAlign: "center", marginTop: 16 },
+
+  hr: { height: 1, backgroundColor: "#e2dbd2", marginTop: 24, marginBottom: 16 },
+  footerRow: { flexDirection: "row", justifyContent: "center", gap: 26 },
+  footerLink: { fontFamily: SERIF, fontSize: 13, letterSpacing: 0.4, color: "#8a8783", textDecorationLine: "underline" },
+
+  hr2: { height: 1, backgroundColor: "#e2dbd2", marginTop: 32 },
+  sessionLabel: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", textAlign: "center", marginTop: 20, marginBottom: 22 },
+  statsRow: { flexDirection: "row", justifyContent: "center", gap: 44, marginBottom: 30 },
+  statCol: { alignItems: "center" },
+  statNum: { fontFamily: SERIF, fontSize: 30 },
+  statLabel: { fontFamily: SERIF, fontStyle: "italic", fontSize: 11, color: "#c5bdb5", marginTop: 8 },
 });

@@ -1,22 +1,36 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Newsreader, Noto_Nastaliq_Urdu } from "next/font/google";
+import Link from "next/link";
+import { useState } from "react";
+import { Noto_Nastaliq_Urdu } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
 import { useVocab } from "@/components/VocabStore";
-import { definedWords, sortWordsAlphabetically, type VocabWord } from "@/lib/vocab";
+import { definedWords, sortWordsAlphabetically } from "@/lib/vocab";
 import { URDU_CARDS, URDU_CATEGORIES, type UrduCard } from "@/lib/urduCards";
 
-const newsreader = Newsreader({ subsets: ["latin"], weight: ["500"] });
 const nastaliq = Noto_Nastaliq_Urdu({ subsets: ["arabic"], weight: ["400"] });
 
-function shuffle<T>(arr: T[]): T[] {
+const SERIF = "'Times New Roman', Times, serif";
+
+function shuffleArr<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+/** Splices the current card out and reinserts it `gap` positions ahead, so it
+ *  resurfaces sooner ("no idea") or later ("needs work") without leaving the deck. */
+function requeueDeck<T>(deck: T[], index: number, gap: number): { deck: T[]; index: number } {
+  if (!deck.length) return { deck, index };
+  const card = deck[index];
+  const rest = [...deck.slice(0, index), ...deck.slice(index + 1)];
+  const insertAt = Math.min(rest.length, index + gap);
+  rest.splice(insertAt, 0, card);
+  const nextIndex = rest.length ? index % rest.length : 0;
+  return { deck: rest, index: nextIndex };
 }
 
 type Deck = "english" | "urdu" | null;
@@ -38,286 +52,293 @@ export default function FlashcardsPage() {
   );
 }
 
+// ── chooser ──────────────────────────────────────────────────────────────────
+
 function DeckChooser({ onChoose }: { onChoose: (deck: Deck) => void }) {
   return (
     <>
-      <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[#9b9a97]">
-        Practice
-      </p>
-      <h1 className={`${newsreader.className} mt-1 text-[28px] font-medium leading-[1.1] tracking-[-0.01em] text-[#2f2f2f]`}>
+      <Link href="/projects" style={{ fontFamily: SERIF, fontSize: 13, color: "#a39a90" }}>
+        ‹ Projects
+      </Link>
+      <h1 style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, color: "#2f2f2f", margin: "20px 0 0", letterSpacing: "-0.01em" }}>
         Flashcards
       </h1>
-      <p className="mt-2 text-[13px] leading-[1.4] text-[#9b9a97]">Choose a deck to study.</p>
+      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 13, color: "#9b9a97", margin: "10px 0 0" }}>
+        Choose a deck to study.
+      </p>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-[#ece6df]">
-        <ChooserRow
-          title="English Vocabulary"
-          subtitle="Words collected from reading"
-          onPress={() => onChoose("english")}
-        />
-        <ChooserRow
-          title="Urdu Flashcards"
-          subtitle="Elementary Urdu II"
-          onPress={() => onChoose("urdu")}
-          last
-        />
+      <div style={{ marginTop: 28 }}>
+        <ChooserRow title="English Vocabulary" subtitle="Words collected from reading" onPress={() => onChoose("english")} />
+        <ChooserRow title="Urdu Flashcards" subtitle="Elementary Urdu II" onPress={() => onChoose("urdu")} />
       </div>
     </>
   );
 }
 
-function ChooserRow({
-  title,
-  subtitle,
-  onPress,
-  last,
-}: {
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-  last?: boolean;
-}) {
+function ChooserRow({ title, subtitle, onPress }: { title: string; subtitle: string; onPress: () => void }) {
   return (
-    <button
-      type="button"
+    <div
       onClick={onPress}
-      className={`flex w-full items-start gap-3 bg-[#fdfbf9] px-4 py-4 text-left transition-colors hover:bg-[#f4efe9] ${
-        last ? "" : "border-b border-[#ece6df]"
-      }`}
+      style={{ display: "flex", alignItems: "baseline", gap: 10, cursor: "pointer", padding: "12px 0", borderBottom: "1px solid #e2dbd2" }}
     >
-      <span className="mt-0.5 font-mono text-sm text-[#b3aaa0]">›</span>
+      <span style={{ fontFamily: SERIF, fontSize: 15, color: "#b3aaa0" }}>›</span>
       <span>
-        <span className="block text-[16px] font-medium text-[#2f2f2f]">{title}</span>
-        <span className="mt-0.5 block text-[12.5px] text-[#9b9a97]">{subtitle}</span>
+        <span style={{ display: "block", fontFamily: SERIF, fontSize: 22, color: "#2f2f2f" }}>{title}</span>
+        <span style={{ display: "block", fontFamily: SERIF, fontStyle: "italic", fontSize: 13, color: "#9b9a97", marginTop: 2 }}>{subtitle}</span>
       </span>
-    </button>
+    </div>
   );
 }
 
 function BackLink({ onBack }: { onBack: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onBack}
-      className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-[#9b9a97] transition-colors hover:text-[#2f2f2f]"
-    >
+    <span onClick={onBack} style={{ fontFamily: SERIF, fontSize: 13, color: "#a39a90", cursor: "pointer" }}>
       ‹ Decks
-    </button>
+    </span>
   );
 }
 
-// ── generic flip-card mechanics, shared by both decks ────────────────────────
+// ── shared bits ──────────────────────────────────────────────────────────────
 
-type FlipCardProps = {
-  frontLabel?: string;
-  frontMain: string;
-  frontFont: string;
-  frontDir?: "rtl" | "ltr";
-  backMain: string;
-  backSub?: string;
+const linkStyle = (color: string): React.CSSProperties => ({
+  fontFamily: SERIF,
+  fontSize: 16,
+  color,
+  textDecoration: "underline",
+  textUnderlineOffset: 3,
+  cursor: "pointer",
+});
+
+function GradingControls({ onPrev, onNoIdea, onNeedsWork, onMastered }: { onPrev: () => void; onNoIdea: () => void; onNeedsWork: () => void; onMastered: () => void }) {
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, marginTop: 22 }}>
+        <span onClick={onPrev} style={{ fontFamily: SERIF, fontSize: 15, letterSpacing: "0.02em", color: "#a39a90", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", flex: "none" }}>
+          ‹ Prev
+        </span>
+        <span onClick={onNoIdea} style={linkStyle("#b23a2e")}>No idea</span>
+        <span onClick={onNeedsWork} style={linkStyle("#8a6a3d")}>Needs work</span>
+        <span onClick={onMastered} style={linkStyle("#3d6b57")}>Mastered</span>
+      </div>
+      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 11.5, lineHeight: 1.4, color: "#c5bdb5", textAlign: "center", margin: "16px 0 0" }}>
+        mastered cards are removed from the deck
+      </p>
+    </>
+  );
+}
+
+function ShuffleReset({ onShuffle, onReset }: { onShuffle: () => void; onReset: () => void }) {
+  return (
+    <>
+      <div style={{ height: 1, background: "#e2dbd2", margin: "24px 0 16px" }} />
+      <div style={{ display: "flex", gap: 26, justifyContent: "center" }}>
+        <span onClick={onShuffle} style={{ fontFamily: SERIF, fontSize: 13, letterSpacing: "0.02em", textTransform: "uppercase", color: "#8a8783", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+          Shuffle
+        </span>
+        <span onClick={onReset} style={{ fontFamily: SERIF, fontSize: 13, letterSpacing: "0.02em", textTransform: "uppercase", color: "#b23a2e", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+          Reset
+        </span>
+      </div>
+    </>
+  );
+}
+
+function SessionStats({ noIdea, needsWork, mastered }: { noIdea: number; needsWork: number; mastered: number }) {
+  return (
+    <>
+      <div style={{ height: 1, background: "#e2dbd2", margin: "32px 0 0" }} />
+      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", textAlign: "center", margin: "20px 0 22px" }}>
+        This session
+      </p>
+      <div style={{ display: "flex", justifyContent: "center", gap: 44, marginBottom: 10 }}>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ fontFamily: SERIF, fontSize: 30, color: "#b23a2e", margin: 0 }}>{noIdea}</p>
+          <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 11, color: "#c5bdb5", margin: "8px 0 0" }}>no idea</p>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ fontFamily: SERIF, fontSize: 30, color: "#8a6a3d", margin: 0 }}>{needsWork}</p>
+          <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 11, color: "#c5bdb5", margin: "8px 0 0" }}>needs work</p>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ fontFamily: SERIF, fontSize: 30, color: "#3d6b57", margin: 0 }}>{mastered}</p>
+          <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 11, color: "#c5bdb5", margin: "8px 0 0" }}>mastered</p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+const cardScene: React.CSSProperties = { perspective: 900, width: "100%", maxWidth: 380, height: 240, margin: "0 auto", cursor: "pointer" };
+const cardFace: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  backfaceVisibility: "hidden",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "30px 26px",
+  background: "#fdfcfa",
+  border: "1px solid #e2dbd2",
 };
-
-function FlipCard({ card, flipped, onFlip }: { card: FlipCardProps; flipped: boolean; onFlip: () => void }) {
-  return (
-    <div className="mx-auto mt-6" style={{ perspective: 900, maxWidth: 380, height: 240 }}>
-      <button
-        type="button"
-        onClick={onFlip}
-        className="relative block h-full w-full cursor-pointer text-left"
-        style={{
-          transformStyle: "preserve-3d",
-          transition: "transform 0.45s cubic-bezier(0.4,0,0.2,1)",
-          transform: flipped ? "rotateY(180deg)" : "none",
-        }}
-      >
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center rounded-[18px] border border-[#ece6df] bg-white"
-          style={{ backfaceVisibility: "hidden", boxShadow: "0 8px 30px rgba(0,0,0,0.10)" }}
-        >
-          {card.frontLabel && (
-            <span className="absolute top-[18px] font-mono text-[10px] font-medium uppercase tracking-[0.10em] text-[#d4cfc9]">
-              {card.frontLabel}
-            </span>
-          )}
-          <span
-            dir={card.frontDir ?? "ltr"}
-            className={`${card.frontFont} px-6 text-center text-[32px] leading-[1.3] text-[#2f2f2f]`}
-          >
-            {card.frontMain}
-          </span>
-          <span className="absolute bottom-[18px] font-mono text-[9.5px] uppercase tracking-[0.12em] text-[#c2bfba]">
-            Tap to reveal
-          </span>
-        </div>
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center rounded-[18px] bg-[#2f2d2b] px-6 text-center"
-          style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)", boxShadow: "0 8px 30px rgba(0,0,0,0.10)" }}
-        >
-          <span className={`${newsreader.className} text-[22px] leading-snug text-[#f6f1ed]`}>{card.backMain}</span>
-          {card.backSub && <span className="mt-3 font-mono text-[13px] tracking-[0.02em] text-[#b3aaa0]">{card.backSub}</span>}
-        </div>
-      </button>
-    </div>
-  );
-}
-
-function MasteryControls({
-  isMastered,
-  onPrev,
-  onNext,
-  onToggleMastered,
-}: {
-  isMastered: boolean;
-  onPrev: () => void;
-  onNext: () => void;
-  onToggleMastered: () => void;
-}) {
-  return (
-    <div className="mt-4 flex items-center justify-between">
-      <button type="button" onClick={onPrev} className="px-2 py-2 font-mono text-[12px] font-medium text-[#2f2f2f] hover:opacity-70">
-        ‹ Prev
-      </button>
-      <button
-        type="button"
-        onClick={onToggleMastered}
-        className={`flex items-center gap-1.5 rounded-full border px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-wide transition-colors ${
-          isMastered ? "border-[#16a34a] bg-[#16a34a] text-white" : "border-[#ece6df] text-[#b3aaa0] hover:text-[#2f2f2f]"
-        }`}
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-          <path d="M5 12l5 5L19 7" stroke={isMastered ? "#fff" : "#b3aaa0"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {isMastered ? "Mastered" : "Master"}
-      </button>
-      <button type="button" onClick={onNext} className="px-2 py-2 font-mono text-[12px] font-medium text-[#2f2f2f] hover:opacity-70">
-        Next ›
-      </button>
-    </div>
-  );
-}
 
 // ── Urdu deck ─────────────────────────────────────────────────────────────────
 
 const URDU_STORAGE_KEY = "urdu_mastered";
 
-function UrduDeck({ onBack }: { onBack: () => void }) {
-  const [cat, setCat] = useState<string>("All");
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [mastered, setMastered] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(URDU_STORAGE_KEY);
-      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-  const [order, setOrder] = useState<string[] | null>(null);
+function loadMastered(key: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
 
-  function persist(next: Set<string>) {
-    try {
-      localStorage.setItem(URDU_STORAGE_KEY, JSON.stringify([...next]));
-    } catch {
-      // ignore
-    }
+function persistMastered(key: string, next: Set<string>) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...next]));
+  } catch {
+    // ignore
+  }
+}
+
+function buildUrduDeck(cat: string, mastered: Set<string>): UrduCard[] {
+  const base = cat === "All" ? URDU_CARDS : URDU_CARDS.filter((c) => c.cat === cat);
+  return base.filter((c) => !mastered.has(c.id));
+}
+
+function UrduDeck({ onBack }: { onBack: () => void }) {
+  const [cat, setCat] = useState("All");
+  const [catMenuOpen, setCatMenuOpen] = useState(false);
+  const [mastered, setMastered] = useState<Set<string>>(() => loadMastered(URDU_STORAGE_KEY));
+  const [ds, setDs] = useState<{ deck: UrduCard[]; index: number; flipped: boolean }>(() => ({
+    deck: buildUrduDeck("All", loadMastered(URDU_STORAGE_KEY)),
+    index: 0,
+    flipped: false,
+  }));
+  const [sessNoIdea, setSessNoIdea] = useState(0);
+  const [sessNeedsWork, setSessNeedsWork] = useState(0);
+
+  const total = ds.deck.length;
+  const card = total ? ds.deck[ds.index] : null;
+  const progressPct = total === 0 ? 100 : Math.round((ds.index / Math.max(1, total)) * 100);
+
+  function selectCat(c: string) {
+    setCat(c);
+    setDs({ deck: buildUrduDeck(c, mastered), index: 0, flipped: false });
+    setCatMenuOpen(false);
   }
 
-  const deck = useMemo(() => {
-    let cards = URDU_CARDS.filter((c) => cat === "All" || c.cat === cat).filter((c) => !mastered.has(c.id));
-    if (order) {
-      const pos = new Map(order.map((id, i) => [id, i]));
-      cards = [...cards].sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
-    }
-    return cards;
-  }, [cat, mastered, order]);
+  function flip() {
+    setDs((s) => ({ ...s, flipped: !s.flipped }));
+  }
 
-  const total = useMemo(() => URDU_CARDS.filter((c) => cat === "All" || c.cat === cat).length, [cat]);
-  const masteredInCat = total - deck.length;
-  const safeIndex = deck.length ? Math.min(index, deck.length - 1) : 0;
-  const card: UrduCard | undefined = deck[safeIndex];
-  const isMastered = card ? mastered.has(card.id) : false;
-  const progressPct = total ? Math.round((masteredInCat / total) * 100) : 0;
+  function prev() {
+    setDs((s) => {
+      if (!s.deck.length) return s;
+      const n = Math.max(1, s.deck.length);
+      return { ...s, index: (s.index - 1 + n) % n, flipped: false };
+    });
+  }
 
-  const selectCat = (c: string) => { setCat(c); setIndex(0); setFlipped(false); };
-  const next = () => { if (deck.length) { setIndex((i) => (i + 1) % deck.length); setFlipped(false); } };
-  const prev = () => { if (deck.length) { setIndex((i) => (i - 1 + deck.length) % deck.length); setFlipped(false); } };
-  const toggleMastered = () => {
-    if (!card) return;
-    const nextSet = new Set(mastered);
-    if (nextSet.has(card.id)) nextSet.delete(card.id); else nextSet.add(card.id);
-    setMastered(nextSet); persist(nextSet); setFlipped(false);
-  };
-  const doShuffle = () => { setOrder(shuffle(deck.map((c) => c.id))); setIndex(0); setFlipped(false); };
-  const doReset = () => { const e = new Set<string>(); setMastered(e); persist(e); setOrder(null); setIndex(0); setFlipped(false); };
+  function requeue(gap: number) {
+    setDs((s) => {
+      const { deck, index } = requeueDeck(s.deck, s.index, gap);
+      return { deck, index, flipped: false };
+    });
+  }
+
+  function noIdea() {
+    setSessNoIdea((n) => n + 1);
+    requeue(2);
+  }
+
+  function needsWork() {
+    setSessNeedsWork((n) => n + 1);
+    requeue(6);
+  }
+
+  function markMastered() {
+    if (!ds.deck.length) return;
+    const c = ds.deck[ds.index];
+    const nextMastered = new Set(mastered);
+    nextMastered.add(c.id);
+    persistMastered(URDU_STORAGE_KEY, nextMastered);
+    setMastered(nextMastered);
+    const deck = buildUrduDeck(cat, nextMastered);
+    setDs({ deck, index: Math.min(ds.index, Math.max(0, deck.length - 1)), flipped: false });
+  }
+
+  function doShuffle() {
+    setDs((s) => ({ deck: shuffleArr(s.deck), index: 0, flipped: false }));
+  }
+
+  function doReset() {
+    const empty = new Set<string>();
+    persistMastered(URDU_STORAGE_KEY, empty);
+    setMastered(empty);
+    setDs({ deck: buildUrduDeck(cat, empty), index: 0, flipped: false });
+  }
 
   return (
     <>
       <BackLink onBack={onBack} />
-      <p className="mt-3 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[#9b9a97]">
-        Elementary Urdu II
-      </p>
-      <h1 className={`${newsreader.className} mt-1 text-[28px] font-medium leading-[1.1] tracking-[-0.01em] text-[#2f2f2f]`}>
-        Urdu Flashcards
-      </h1>
-      <p className="mt-2 text-[13px] leading-[1.4] text-[#9b9a97]">
-        {masteredInCat} of {total} mastered · {URDU_CARDS.length} cards total
-      </p>
 
-      <div className="mt-5 flex flex-wrap gap-1.5">
-        {URDU_CATEGORIES.map((c) => {
-          const active = cat === c;
-          return (
-            <button
-              key={c}
-              type="button"
-              onClick={() => selectCat(c)}
-              className={`rounded-md px-[11px] py-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] transition-colors ${
-                active ? "bg-[#2f2d2b] text-[#f6f1ed]" : "bg-[#ece6df] text-[#6a6560] hover:bg-[#e3ddd5]"
-              }`}
-            >
-              {c}
-            </button>
-          );
-        })}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 0" }}>
+        <h1 style={{ fontFamily: SERIF, fontSize: 27, lineHeight: 1, color: "#2f2f2f", margin: 0, letterSpacing: "-0.01em" }}>Urdu</h1>
+        <span style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", flex: "none" }}>{total} remaining</span>
       </div>
 
-      <div className="mt-5 h-[3px] w-full overflow-hidden rounded-full bg-[#ece6df]">
-        <div className="h-full rounded-full bg-[#b23a2e] transition-all duration-300" style={{ width: `${progressPct}%` }} />
+      <div style={{ marginTop: 20, marginBottom: 22, position: "relative" }}>
+        <span onClick={() => setCatMenuOpen((v) => !v)} style={{ fontFamily: SERIF, fontSize: 14, color: "#2f2f2f", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+          {cat} {catMenuOpen ? "▴" : "▾"}
+        </span>
+        {catMenuOpen && (
+          <div style={{ position: "absolute", top: 26, left: 0, zIndex: 6, background: "#fdfcfa", border: "1px solid #e2dbd2", padding: "10px 16px", display: "flex", flexDirection: "column", gap: 10, minWidth: 150, boxShadow: "0 8px 20px rgba(0,0,0,.08)" }}>
+            {URDU_CATEGORIES.map((c) => (
+              <span
+                key={c}
+                onClick={() => selectCat(c)}
+                style={{ fontFamily: SERIF, fontSize: 14, color: cat === c ? "#2f2f2f" : "#b3aaa0", textDecoration: cat === c ? "underline" : "none", textUnderlineOffset: 3, cursor: "pointer" }}
+              >
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {card ? (
-        <FlipCard
-          card={{
-            frontLabel: card.cat,
-            frontMain: card.urdu,
-            frontFont: nastaliq.className,
-            frontDir: "rtl",
-            backMain: card.english,
-            backSub: card.roman,
-          }}
-          flipped={flipped}
-          onFlip={() => setFlipped((f) => !f)}
-        />
-      ) : (
-        <div className="mx-auto mt-6 flex flex-col items-center justify-center rounded-[18px] border border-[#ece6df] bg-[#fdfbf9]" style={{ maxWidth: 380, height: 240 }}>
-          <p className={`${newsreader.className} text-2xl text-[#2f2f2f]`}>All caught up!</p>
-          <p className="mt-2 text-[13px] text-[#9b9a97]">Every card in {cat} is mastered.</p>
+      <div style={{ height: 1, background: "#e2dbd2", marginBottom: 4 }}>
+        <div style={{ height: 1, background: "#2f2f2f", width: `${progressPct}%`, transition: "width .3s ease" }} />
+      </div>
+      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", margin: "8px 0 26px" }}>{mastered.size} mastered</p>
+
+      <div style={cardScene} onClick={flip}>
+        <div style={{ width: "100%", height: "100%", position: "relative", transformStyle: "preserve-3d", transition: "transform .45s cubic-bezier(.4,0,.2,1)", transform: ds.flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}>
+          <div style={cardFace}>
+            <p className={nastaliq.className} dir="rtl" style={{ fontSize: 42, lineHeight: 1.4, color: "#2f2f2f", margin: 0, textAlign: "center", fontWeight: 400 }}>
+              {card ? card.urdu : "—"}
+            </p>
+            <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 13, letterSpacing: "0.02em", color: "#c5bdb5", margin: "22px 0 0" }}>tap to reveal</p>
+          </div>
+          <div style={{ ...cardFace, transform: "rotateY(180deg)" }}>
+            <p className={nastaliq.className} dir="rtl" style={{ fontSize: 30, lineHeight: 1.3, color: "#2f2f2f", margin: 0, textAlign: "center", fontWeight: 400 }}>
+              {card ? card.urdu : "—"}
+            </p>
+            <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#a39a90", margin: "10px 0 0" }}>{card ? card.roman : ""}</p>
+            <p style={{ fontFamily: SERIF, fontSize: 20, lineHeight: 1.4, color: "#2f2f2f", margin: "18px 0 0", textAlign: "center" }}>{card ? card.english : "Done!"}</p>
+          </div>
         </div>
-      )}
-
-      {card && <p className="mt-4 text-center font-mono text-[11px] text-[#b3aaa0]">{safeIndex + 1} / {deck.length}</p>}
-      {card && <MasteryControls isMastered={isMastered} onPrev={prev} onNext={next} onToggleMastered={toggleMastered} />}
-
-      <p className="mt-4 text-center text-[12px] text-[#b3aaa0]">Tap the card to flip · mark cards you know as mastered</p>
-
-      <div className="mt-6 flex justify-center gap-6">
-        <button type="button" onClick={doShuffle} className="font-mono text-[11px] font-medium uppercase tracking-wide text-[#9b9a97] hover:text-[#2f2f2f]">
-          Shuffle
-        </button>
-        <button type="button" onClick={doReset} className="font-mono text-[11px] font-medium uppercase tracking-wide text-[#b23a2e] hover:opacity-70">
-          Reset progress
-        </button>
       </div>
+
+      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 13, color: "#b3aaa0", textAlign: "center", margin: "18px 0 0" }}>
+        {total ? `${ds.index + 1} / ${total}` : "All mastered!"}
+      </p>
+
+      <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onMastered={markMastered} />
+      <ShuffleReset onShuffle={doShuffle} onReset={doReset} />
+      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} mastered={mastered.size} />
     </>
   );
 }
@@ -328,106 +349,117 @@ const ENGLISH_STORAGE_KEY = "english_vocab_mastered";
 
 function EnglishDeck({ onBack }: { onBack: () => void }) {
   const { words, hydrated } = useVocab();
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [mastered, setMastered] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(ENGLISH_STORAGE_KEY);
-      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-  const [order, setOrder] = useState<string[] | null>(null);
+  const quizzable = sortWordsAlphabetically(definedWords(words));
 
-  function persist(next: Set<string>) {
-    try {
-      localStorage.setItem(ENGLISH_STORAGE_KEY, JSON.stringify([...next]));
-    } catch {
-      // ignore
-    }
+  const [mastered, setMastered] = useState<Set<string>>(() => loadMastered(ENGLISH_STORAGE_KEY));
+  const [ds, setDs] = useState<{ deck: typeof quizzable; index: number; flipped: boolean } | null>(null);
+
+  // quizzable only stabilizes once vocab has hydrated from Supabase, so seed
+  // the working deck the first time real data shows up.
+  if (ds === null && hydrated) {
+    setDs({ deck: quizzable.filter((w) => !mastered.has(w.id)), index: 0, flipped: false });
   }
 
-  const quizzable = useMemo(() => sortWordsAlphabetically(definedWords(words)), [words]);
+  const [sessNoIdea, setSessNoIdea] = useState(0);
+  const [sessNeedsWork, setSessNeedsWork] = useState(0);
 
-  const deck = useMemo(() => {
-    let cards = quizzable.filter((w) => !mastered.has(w.id));
-    if (order) {
-      const pos = new Map(order.map((id, i) => [id, i]));
-      cards = [...cards].sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
-    }
-    return cards;
-  }, [quizzable, mastered, order]);
-
-  const total = quizzable.length;
-  const masteredCount = total - deck.length;
-  const safeIndex = deck.length ? Math.min(index, deck.length - 1) : 0;
-  const card: VocabWord | undefined = deck[safeIndex];
-  const isMastered = card ? mastered.has(card.id) : false;
-  const progressPct = total ? Math.round((masteredCount / total) * 100) : 0;
+  const total = ds ? ds.deck.length : 0;
+  const card = ds && total ? ds.deck[ds.index] : null;
+  const progressPct = total === 0 ? 100 : Math.round(((ds?.index ?? 0) / Math.max(1, total)) * 100);
   const undefinedCount = words.length - quizzable.length;
 
-  const next = () => { if (deck.length) { setIndex((i) => (i + 1) % deck.length); setFlipped(false); } };
-  const prev = () => { if (deck.length) { setIndex((i) => (i - 1 + deck.length) % deck.length); setFlipped(false); } };
-  const toggleMastered = () => {
-    if (!card) return;
-    const nextSet = new Set(mastered);
-    if (nextSet.has(card.id)) nextSet.delete(card.id); else nextSet.add(card.id);
-    setMastered(nextSet); persist(nextSet); setFlipped(false);
-  };
-  const doShuffle = () => { setOrder(shuffle(deck.map((w) => w.id))); setIndex(0); setFlipped(false); };
-  const doReset = () => { const e = new Set<string>(); setMastered(e); persist(e); setOrder(null); setIndex(0); setFlipped(false); };
+  function flip() {
+    setDs((s) => (s ? { ...s, flipped: !s.flipped } : s));
+  }
+
+  function prev() {
+    setDs((s) => {
+      if (!s || !s.deck.length) return s;
+      const n = Math.max(1, s.deck.length);
+      return { ...s, index: (s.index - 1 + n) % n, flipped: false };
+    });
+  }
+
+  function requeue(gap: number) {
+    setDs((s) => {
+      if (!s) return s;
+      const { deck, index } = requeueDeck(s.deck, s.index, gap);
+      return { deck, index, flipped: false };
+    });
+  }
+
+  function noIdea() {
+    setSessNoIdea((n) => n + 1);
+    requeue(2);
+  }
+
+  function needsWork() {
+    setSessNeedsWork((n) => n + 1);
+    requeue(6);
+  }
+
+  function markMastered() {
+    if (!ds || !ds.deck.length) return;
+    const w = ds.deck[ds.index];
+    const nextMastered = new Set(mastered);
+    nextMastered.add(w.id);
+    persistMastered(ENGLISH_STORAGE_KEY, nextMastered);
+    setMastered(nextMastered);
+    const deck = quizzable.filter((x) => !nextMastered.has(x.id));
+    setDs({ deck, index: Math.min(ds.index, Math.max(0, deck.length - 1)), flipped: false });
+  }
+
+  function doShuffle() {
+    setDs((s) => (s ? { deck: shuffleArr(s.deck), index: 0, flipped: false } : s));
+  }
+
+  function doReset() {
+    const empty = new Set<string>();
+    persistMastered(ENGLISH_STORAGE_KEY, empty);
+    setMastered(empty);
+    setDs({ deck: quizzable.filter((x) => !empty.has(x.id)), index: 0, flipped: false });
+  }
 
   return (
     <>
       <BackLink onBack={onBack} />
-      <p className="mt-3 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[#9b9a97]">
-        From your reading
-      </p>
-      <h1 className={`${newsreader.className} mt-1 text-[28px] font-medium leading-[1.1] tracking-[-0.01em] text-[#2f2f2f]`}>
-        English Vocabulary
-      </h1>
-      <p className="mt-2 text-[13px] leading-[1.4] text-[#9b9a97]">
-        {hydrated ? `${masteredCount} of ${total} mastered` : "Loading…"}
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 0" }}>
+        <h1 style={{ fontFamily: SERIF, fontSize: 27, lineHeight: 1, color: "#2f2f2f", margin: 0, letterSpacing: "-0.01em" }}>English</h1>
+        <span style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", flex: "none" }}>{total} remaining</span>
+      </div>
+
+      <div style={{ height: 1, background: "#e2dbd2", marginTop: 20, marginBottom: 4 }}>
+        <div style={{ height: 1, background: "#2f2f2f", width: `${progressPct}%`, transition: "width .3s ease" }} />
+      </div>
+      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", margin: "8px 0 26px" }}>
+        {hydrated ? `${mastered.size} mastered` : "Loading…"}
         {undefinedCount > 0 && ` · ${undefinedCount} words need a definition first`}
       </p>
 
-      <div className="mt-5 h-[3px] w-full overflow-hidden rounded-full bg-[#ece6df]">
-        <div className="h-full rounded-full bg-[#b23a2e] transition-all duration-300" style={{ width: `${progressPct}%` }} />
-      </div>
-
-      {card ? (
-        <FlipCard
-          card={{ frontMain: card.word, frontFont: newsreader.className, backMain: card.definition ?? "" }}
-          flipped={flipped}
-          onFlip={() => setFlipped((f) => !f)}
-        />
-      ) : (
-        <div className="mx-auto mt-6 flex flex-col items-center justify-center rounded-[18px] border border-[#ece6df] bg-[#fdfbf9]" style={{ maxWidth: 380, height: 240 }}>
-          <p className={`${newsreader.className} text-2xl text-[#2f2f2f]`}>
-            {total === 0 ? "No words to study yet" : "All caught up!"}
-          </p>
-          <p className="mt-2 max-w-[280px] text-center text-[13px] text-[#9b9a97]">
-            {total === 0
-              ? "Add definitions to your vocabulary list to start quizzing."
-              : "Every defined word is mastered."}
-          </p>
+      <div style={cardScene} onClick={flip}>
+        <div style={{ width: "100%", height: "100%", position: "relative", transformStyle: "preserve-3d", transition: "transform .45s cubic-bezier(.4,0,.2,1)", transform: ds?.flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}>
+          <div style={cardFace}>
+            <p style={{ fontFamily: SERIF, fontSize: 40, lineHeight: 1.1, color: "#2f2f2f", margin: 0, textAlign: "center" }}>{card ? card.word : "Done!"}</p>
+            <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 13, letterSpacing: "0.02em", color: "#c5bdb5", margin: "22px 0 0" }}>tap to reveal</p>
+          </div>
+          <div style={{ ...cardFace, transform: "rotateY(180deg)" }}>
+            <p style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 1.1, color: "#2f2f2f", margin: 0, textAlign: "center" }}>{card ? card.word : "Done!"}</p>
+            {card?.pos && (
+              <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#a39a90", margin: "10px 0 0" }}>{card.pos}</p>
+            )}
+            <p style={{ fontFamily: SERIF, fontSize: 18, lineHeight: 1.5, color: "#2f2f2f", margin: "18px 0 0", textAlign: "center" }}>{card ? card.definition : ""}</p>
+          </div>
         </div>
-      )}
-
-      {card && <p className="mt-4 text-center font-mono text-[11px] text-[#b3aaa0]">{safeIndex + 1} / {deck.length}</p>}
-      {card && <MasteryControls isMastered={isMastered} onPrev={prev} onNext={next} onToggleMastered={toggleMastered} />}
-
-      <p className="mt-4 text-center text-[12px] text-[#b3aaa0]">Tap the card to flip · mark words you know as mastered</p>
-
-      <div className="mt-6 flex justify-center gap-6">
-        <button type="button" onClick={doShuffle} className="font-mono text-[11px] font-medium uppercase tracking-wide text-[#9b9a97] hover:text-[#2f2f2f]">
-          Shuffle
-        </button>
-        <button type="button" onClick={doReset} className="font-mono text-[11px] font-medium uppercase tracking-wide text-[#b23a2e] hover:opacity-70">
-          Reset progress
-        </button>
       </div>
+
+      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 13, color: "#b3aaa0", textAlign: "center", margin: "18px 0 0" }}>
+        {total ? `${(ds?.index ?? 0) + 1} / ${total}` : total === 0 && quizzable.length === 0 ? "No words to study yet" : "All mastered!"}
+      </p>
+
+      <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onMastered={markMastered} />
+      <ShuffleReset onShuffle={doShuffle} onReset={doReset} />
+      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} mastered={mastered.size} />
     </>
   );
 }
