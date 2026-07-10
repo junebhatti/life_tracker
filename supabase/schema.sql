@@ -188,6 +188,11 @@ create table if not exists public.vocab_words (
   definition text,
   created_at timestamptz not null default now()
 );
+-- Part of speech, an example sentence, and synonyms — all optional, filled in
+-- from the word detail sheet whenever there's time.
+alter table public.vocab_words add column if not exists pos text;
+alter table public.vocab_words add column if not exists example text;
+alter table public.vocab_words add column if not exists synonyms jsonb not null default '[]';
 create index if not exists vocab_words_user_id_idx on public.vocab_words (user_id);
 alter table public.vocab_words enable row level security;
 

@@ -39,7 +39,15 @@ import type {
   WaterHistoryDay,
 } from "../types";
 import type { PodcastMeta } from "../lib/podcast";
-import type { VocabWord } from "../lib/vocab";
+import type { PartOfSpeech, VocabWord } from "../lib/vocab";
+
+type VocabWordPatch = {
+  word?: string;
+  definition?: string;
+  pos?: PartOfSpeech;
+  example?: string;
+  synonyms?: string[];
+};
 
 
 // ---------------------------------------------------------------------------
@@ -210,8 +218,8 @@ type AppStateValue = {
   addPodcastEpisode: (input: { title: string; meta: PodcastMeta; tags: string[] }) => string;
   savePodcastEpisode: (id: string, patch: { title?: string; body?: string; tags?: string[]; meta?: PodcastMeta }) => void;
   vocabWords: VocabWord[];
-  addVocabWord: (word: string, definition?: string) => void;
-  updateVocabWord: (id: string, patch: { word?: string; definition?: string }) => void;
+  addVocabWord: (input: { word: string; definition?: string; pos?: PartOfSpeech }) => void;
+  updateVocabWord: (id: string, patch: VocabWordPatch) => void;
   deleteVocabWord: (id: string) => void;
   selectedProjectId: string | null;
   openProject: (id: string | null) => void;
@@ -498,14 +506,27 @@ export function AppStateProvider({
   async function loadVocabWords() {
     const { data } = await supabase
       .from("vocab_words")
-      .select("id,word,definition,created_at")
+      .select("id,word,definition,pos,example,synonyms,created_at")
       .eq("user_id", userId);
     if (data) {
       setVocabWords(
-        (data as { id: string; word: string; definition: string | null; created_at: string }[]).map((r) => ({
+        (
+          data as {
+            id: string;
+            word: string;
+            definition: string | null;
+            pos: string | null;
+            example: string | null;
+            synonyms: string[] | null;
+            created_at: string;
+          }[]
+        ).map((r) => ({
           id: r.id,
           word: r.word,
           definition: r.definition ?? undefined,
+          pos: (r.pos as PartOfSpeech | null) ?? undefined,
+          example: r.example ?? undefined,
+          synonyms: r.synonyms && r.synonyms.length ? r.synonyms : undefined,
           createdAt: r.created_at,
         })),
       );
@@ -1109,15 +1130,28 @@ export function AppStateProvider({
   // Words collected while reading. A word can exist with no definition yet —
   // it's filled in later from the vocabulary screen.
 
-  const addVocabWord = useCallback((word: string, definition?: string) => {
-    const trimmed = word.trim();
+  const addVocabWord = useCallback((input: { word: string; definition?: string; pos?: PartOfSpeech }) => {
+    const trimmed = input.word.trim();
     if (!trimmed) return;
     const id = `vocab${Date.now()}`;
-    const entry: VocabWord = { id, word: trimmed, definition: definition?.trim() || undefined, createdAt: new Date().toISOString() };
+    const entry: VocabWord = {
+      id,
+      word: trimmed,
+      definition: input.definition?.trim() || undefined,
+      pos: input.pos,
+      createdAt: new Date().toISOString(),
+    };
     setVocabWords((prev) => [...prev, entry]);
     void supabase
       .from("vocab_words")
-      .insert({ id, user_id: userId, word: entry.word, definition: entry.definition ?? null, created_at: entry.createdAt })
+      .insert({
+        id,
+        user_id: userId,
+        word: entry.word,
+        definition: entry.definition ?? null,
+        pos: entry.pos ?? null,
+        created_at: entry.createdAt,
+      })
       .then(({ error }) => {
         if (error) {
           console.error("Failed to add vocab word", error);
@@ -1128,7 +1162,7 @@ export function AppStateProvider({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, showToast]);
 
-  const updateVocabWord = useCallback((id: string, patch: { word?: string; definition?: string }) => {
+  const updateVocabWord = useCallback((id: string, patch: VocabWordPatch) => {
     setVocabWords((prev) =>
       prev.map((w) =>
         w.id === id
@@ -1136,6 +1170,9 @@ export function AppStateProvider({
               ...w,
               word: patch.word !== undefined ? patch.word.trim() || w.word : w.word,
               definition: patch.definition !== undefined ? patch.definition.trim() || undefined : w.definition,
+              pos: patch.pos !== undefined ? patch.pos : w.pos,
+              example: patch.example !== undefined ? patch.example.trim() || undefined : w.example,
+              synonyms: patch.synonyms !== undefined ? patch.synonyms : w.synonyms,
             }
           : w,
       ),
@@ -1143,6 +1180,9 @@ export function AppStateProvider({
     const db: Record<string, unknown> = {};
     if (patch.word !== undefined) db.word = patch.word.trim();
     if (patch.definition !== undefined) db.definition = patch.definition.trim() || null;
+    if (patch.pos !== undefined) db.pos = patch.pos;
+    if (patch.example !== undefined) db.example = patch.example.trim() || null;
+    if (patch.synonyms !== undefined) db.synonyms = patch.synonyms;
     if (Object.keys(db).length === 0) return;
     void supabase
       .from("vocab_words")

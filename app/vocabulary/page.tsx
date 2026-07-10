@@ -4,236 +4,342 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useVocab } from "@/components/VocabStore";
-import { sortWordsAlphabetically, type VocabWord } from "@/lib/vocab";
+import { POS_LIST, POS_SHORT, sortWordsAlphabetically, type PartOfSpeech, type VocabWord } from "@/lib/vocab";
+
+const SERIF = "'Times New Roman', Times, serif";
+
+function posLabel(pos?: PartOfSpeech): string {
+  return pos ? POS_SHORT[pos] : "";
+}
+
+// ── part-of-speech picker (plain text row, active one underlined) ────────────
+
+function PosPicker({ value, onChange }: { value: PartOfSpeech; onChange: (pos: PartOfSpeech) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 18 }}>
+      {POS_LIST.map((p) => (
+        <span
+          key={p}
+          onClick={() => onChange(p)}
+          style={{
+            fontFamily: SERIF,
+            fontSize: 15,
+            cursor: "pointer",
+            color: value === p ? "#2f2f2f" : "#b3aaa0",
+            textDecoration: value === p ? "underline" : "none",
+            textUnderlineOffset: 3,
+          }}
+        >
+          {p}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ── add word sheet ──────────────────────────────────────────────────────────
+
+function AddWordSheet({ onClose }: { onClose: () => void }) {
+  const { addWord } = useVocab();
+  const [word, setWord] = useState("");
+  const [pos, setPos] = useState<PartOfSpeech>("noun");
+  const [definition, setDefinition] = useState("");
+
+  function save() {
+    if (!word.trim()) return;
+    addWord({ word, pos, definition });
+    onClose();
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50 }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(30,28,26,.45)" }} />
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          bottom: 0,
+          transform: "translateX(-50%)",
+          width: "100%",
+          maxWidth: 480,
+          background: "#fdfcfa",
+          borderTop: "1px solid #2f2f2f",
+          padding: "26px 24px 36px",
+          maxHeight: "88vh",
+          overflowY: "auto",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <p style={{ fontFamily: SERIF, fontSize: 12, letterSpacing: "0.02em", textTransform: "uppercase", color: "#2f2f2f", margin: 0 }}>
+            New Word
+          </p>
+          <span
+            onClick={onClose}
+            style={{ fontFamily: SERIF, fontSize: 13, letterSpacing: "0.03em", textTransform: "uppercase", color: "#2f2f2f", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}
+          >
+            Close ×
+          </span>
+        </div>
+        <div style={{ height: 1, background: "#2f2f2f", margin: "12px 0 20px" }} />
+
+        <input
+          value={word}
+          onChange={(e) => setWord(e.target.value)}
+          placeholder="Word"
+          autoFocus
+          style={{ width: "100%", border: "none", borderBottom: "1px solid #d8d1c8", background: "transparent", padding: "4px 0 10px", fontFamily: SERIF, fontSize: 30, color: "#2f2f2f", outline: "none", marginBottom: 20 }}
+        />
+
+        <p style={{ fontFamily: SERIF, fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "#9b9a97", margin: "0 0 8px" }}>
+          Part of speech
+        </p>
+        <PosPicker value={pos} onChange={setPos} />
+
+        <p style={{ fontFamily: SERIF, fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "#9b9a97", margin: "0 0 6px" }}>
+          Definition
+        </p>
+        <textarea
+          value={definition}
+          onChange={(e) => setDefinition(e.target.value)}
+          rows={3}
+          placeholder="Add a definition…"
+          style={{ width: "100%", border: "1px solid #e2dbd2", background: "transparent", padding: "9px 10px", fontFamily: SERIF, fontSize: 15, lineHeight: 1.5, color: "#2f2f2f", outline: "none", resize: "none", marginBottom: 24 }}
+        />
+
+        <div style={{ height: 1, background: "#e2dbd2", marginBottom: 16 }} />
+        <div style={{ display: "flex", gap: 26 }}>
+          <span onClick={onClose} style={{ fontFamily: SERIF, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", color: "#8a8783", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+            Cancel
+          </span>
+          <span onClick={save} style={{ fontFamily: SERIF, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", color: "#2f2f2f", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+            Save
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── word detail / edit bottom sheet ─────────────────────────────────────────
+
+function WordSheet({ word, onClose }: { word: VocabWord; onClose: () => void }) {
+  const { updateWord, deleteWord } = useVocab();
+  const [editing, setEditing] = useState(false);
+  const [wordVal, setWordVal] = useState(word.word);
+  const [posVal, setPosVal] = useState<PartOfSpeech>(word.pos ?? "noun");
+  const [defVal, setDefVal] = useState(word.definition ?? "");
+  const [exVal, setExVal] = useState(word.example ?? "");
+
+  function startEdit() {
+    setWordVal(word.word);
+    setPosVal(word.pos ?? "noun");
+    setDefVal(word.definition ?? "");
+    setExVal(word.example ?? "");
+    setEditing(true);
+  }
+
+  function save() {
+    updateWord(word.id, { word: wordVal, pos: posVal, definition: defVal, example: exVal });
+    setEditing(false);
+  }
+
+  function remove() {
+    deleteWord(word.id);
+    onClose();
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50 }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(30,28,26,.45)" }} />
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          bottom: 0,
+          transform: "translateX(-50%)",
+          width: "100%",
+          maxWidth: 480,
+          background: "#fdfcfa",
+          borderTop: "1px solid #2f2f2f",
+          padding: "26px 24px 36px",
+          maxHeight: "88vh",
+          overflowY: "auto",
+        }}
+      >
+        {editing ? (
+          <>
+            <input
+              value={wordVal}
+              onChange={(e) => setWordVal(e.target.value)}
+              autoFocus
+              style={{ width: "100%", border: "none", borderBottom: "1px solid #d8d1c8", background: "transparent", padding: "4px 0 10px", fontFamily: SERIF, fontSize: 26, color: "#2f2f2f", outline: "none", marginBottom: 16 }}
+            />
+            <p style={{ fontFamily: SERIF, fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "#9b9a97", margin: "0 0 8px" }}>
+              Part of speech
+            </p>
+            <PosPicker value={posVal} onChange={setPosVal} />
+            <p style={{ fontFamily: SERIF, fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "#9b9a97", margin: "0 0 6px" }}>
+              Definition
+            </p>
+            <textarea
+              value={defVal}
+              onChange={(e) => setDefVal(e.target.value)}
+              rows={3}
+              placeholder="Add a definition…"
+              style={{ width: "100%", border: "1px solid #e2dbd2", background: "transparent", padding: "9px 10px", fontFamily: SERIF, fontSize: 15, lineHeight: 1.5, color: "#2f2f2f", outline: "none", resize: "none", marginBottom: 14 }}
+            />
+            <p style={{ fontFamily: SERIF, fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "#9b9a97", margin: "0 0 6px" }}>
+              Example
+            </p>
+            <textarea
+              value={exVal}
+              onChange={(e) => setExVal(e.target.value)}
+              rows={2}
+              placeholder="Add an example sentence…"
+              style={{ width: "100%", border: "1px solid #e2dbd2", background: "transparent", padding: "9px 10px", fontFamily: SERIF, fontStyle: "italic", fontSize: 14, lineHeight: 1.5, color: "#2f2f2f", outline: "none", resize: "none", marginBottom: 20 }}
+            />
+            <div style={{ height: 1, background: "#e2dbd2", marginBottom: 16 }} />
+            <div style={{ display: "flex", gap: 26 }}>
+              <span onClick={() => setEditing(false)} style={{ fontFamily: SERIF, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", color: "#8a8783", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+                Cancel
+              </span>
+              <span onClick={save} style={{ fontFamily: SERIF, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", color: "#2f2f2f", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+                Save
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end" }}>
+              <span onClick={onClose} style={{ fontFamily: SERIF, fontSize: 13, letterSpacing: "0.03em", textTransform: "uppercase", color: "#2f2f2f", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+                Close ×
+              </span>
+            </div>
+            <h2 style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 44, lineHeight: 1.05, color: "#1a1a1a", margin: "14px 0 0" }}>{word.word}</h2>
+            {word.pos && (
+              <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 16, color: "#a39a90", margin: "14px 0 0" }}>
+                {word.pos.charAt(0).toUpperCase() + word.pos.slice(1)}
+              </p>
+            )}
+            {word.definition ? (
+              <p style={{ fontFamily: SERIF, fontSize: 17, lineHeight: 1.6, color: "#2f2f2f", margin: "14px 0 0" }}>{word.definition}</p>
+            ) : (
+              <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 15, lineHeight: 1.5, color: "#b3aaa0", margin: "14px 0 0" }}>No definition yet.</p>
+            )}
+            {word.example && (
+              <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 15, lineHeight: 1.7, color: "#6a6560", margin: "16px 0 0" }}>{word.example}</p>
+            )}
+            {word.synonyms && word.synonyms.length > 0 && (
+              <>
+                <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 16, color: "#a39a90", margin: "26px 0 0" }}>Synonyms</p>
+                <p style={{ fontFamily: SERIF, fontSize: 16, lineHeight: 1.5, color: "#a39a90", margin: "8px 0 0" }}>{word.synonyms.join(" · ")}</p>
+              </>
+            )}
+            <div style={{ height: 1, background: "#e2dbd2", margin: "26px 0 18px" }} />
+            <div style={{ display: "flex", gap: 26 }}>
+              <span onClick={startEdit} style={{ fontFamily: SERIF, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", color: "#2f2f2f", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+                Edit
+              </span>
+              <span onClick={remove} style={{ fontFamily: SERIF, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", color: "#b23a2e", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+                Delete
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── page ─────────────────────────────────────────────────────────────────────
 
 export default function VocabularyPage() {
-  const { words, hydrated, addWord, updateWord, deleteWord } = useVocab();
-  const [search, setSearch] = useState("");
+  const { words, hydrated } = useVocab();
+  const [adding, setAdding] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [newWord, setNewWord] = useState("");
-  const [newDefinition, setNewDefinition] = useState("");
 
   const sorted = useMemo(() => sortWordsAlphabetically(words), [words]);
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return sorted;
-    return sorted.filter(
-      (w) => w.word.toLowerCase().includes(q) || (w.definition ?? "").toLowerCase().includes(q),
-    );
-  }, [sorted, search]);
-
   const active = activeId ? words.find((w) => w.id === activeId) ?? null : null;
-
-  function submitNewWord() {
-    if (!newWord.trim()) return;
-    addWord(newWord, newDefinition);
-    setNewWord("");
-    setNewDefinition("");
-  }
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-8 py-10">
+      <main className="flex-1 overflow-y-auto" style={{ background: "#f6f1ed" }}>
+        <div className="mx-auto max-w-2xl px-5 pb-16 pt-11">
           <Link
             href="/projects"
-            className="text-[11px] uppercase tracking-wider text-muted transition-colors hover:text-foreground"
+            style={{ fontFamily: SERIF, fontSize: 13, color: "#a39a90" }}
+            className="transition-colors hover:opacity-70"
           >
-            ← Projects
+            ‹ Projects
           </Link>
 
-          <div className="mt-4 flex items-baseline gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">English Vocabulary</h1>
-            <span className="text-lg text-muted">/{words.length}</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 9, minWidth: 0 }}>
+              <h1 style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, color: "#2f2f2f", margin: 0, letterSpacing: "-0.01em" }}>
+                Chasing Articulation
+              </h1>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flex: "none" }}>
+              <span style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", whiteSpace: "nowrap" }}>
+                {words.length} word{words.length === 1 ? "" : "s"}
+              </span>
+              <span
+                onClick={() => setAdding(true)}
+                style={{
+                  width: 25,
+                  height: 25,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flex: "none",
+                  color: "#9b9a97",
+                  fontFamily: SERIF,
+                  fontSize: 19,
+                  cursor: "pointer",
+                }}
+              >
+                +
+              </span>
+            </div>
           </div>
-          <p className="mt-2 text-sm text-muted">
-            Words collected while reading. Click a word for its definition — tap Edit to fill one in.
-          </p>
-
-          {/* Quick add */}
-          <div className="mt-6 flex gap-2">
-            <input
-              value={newWord}
-              onChange={(e) => setNewWord(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submitNewWord()}
-              placeholder="Add a word…"
-              className="w-40 rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none"
-            />
-            <input
-              value={newDefinition}
-              onChange={(e) => setNewDefinition(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submitNewWord()}
-              placeholder="Definition (optional)"
-              className="flex-1 rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none"
-            />
-            <button
-              type="button"
-              onClick={submitNewWord}
-              disabled={!newWord.trim()}
-              className="rounded-md bg-foreground px-4 py-2 text-sm text-background disabled:opacity-40"
-            >
-              Add
-            </button>
-          </div>
-
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search words or definitions…"
-            className="mt-4 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none"
-          />
 
           {!hydrated && (
-            <div className="mt-6 flex flex-col gap-2">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-9 w-full animate-pulse rounded bg-hover" />
+            <div className="mt-6 flex flex-col gap-3">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="h-8 w-full animate-pulse rounded bg-hover" />
               ))}
             </div>
           )}
 
-          {hydrated && filtered.length === 0 && (
-            <p className="mt-8 text-sm text-muted">
-              {words.length === 0 ? "No words yet — add one above." : "No words match your search."}
+          {hydrated && words.length === 0 && (
+            <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#b3aaa0", marginTop: 40 }}>
+              No words yet — tap + to add one.
             </p>
           )}
 
-          {hydrated && filtered.length > 0 && (
-            <div className="mt-6">
-              {filtered.map((w) => (
-                <button
+          {hydrated && words.length > 0 && (
+            <div style={{ marginTop: 44 }}>
+              {sorted.map((w) => (
+                <div
                   key={w.id}
-                  type="button"
                   onClick={() => setActiveId(w.id)}
-                  className="flex w-full items-baseline justify-between border-b border-border py-2.5 text-left transition-colors hover:bg-hover"
+                  style={{ display: "flex", alignItems: "center", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", padding: "3px 0" }}
                 >
-                  <span className="text-lg text-foreground">{w.word}</span>
-                  {!w.definition && (
-                    <span className="shrink-0 text-[11px] uppercase tracking-wider text-muted">
-                      no definition
-                    </span>
+                  <span style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1.08, color: "#2f2f2f" }}>{w.word}</span>
+                  {w.pos && (
+                    <span style={{ margin: "0 0 0 10px", fontFamily: SERIF, fontSize: 17, color: "#a39a90" }}>{posLabel(w.pos)}</span>
                   )}
-                </button>
+                </div>
               ))}
             </div>
           )}
         </div>
       </main>
 
-      {active && (
-        <DefinitionModal
-          word={active}
-          onClose={() => setActiveId(null)}
-          onSave={updateWord}
-          onDelete={(id) => {
-            deleteWord(id);
-            setActiveId(null);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function DefinitionModal({
-  word,
-  onClose,
-  onSave,
-  onDelete,
-}: {
-  word: VocabWord;
-  onClose: () => void;
-  onSave: (id: string, patch: { word?: string; definition?: string }) => void;
-  onDelete: (id: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [wordText, setWordText] = useState(word.word);
-  const [definitionText, setDefinitionText] = useState(word.definition ?? "");
-
-  function save() {
-    onSave(word.id, { word: wordText, definition: definitionText });
-    setEditing(false);
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-xl border border-border bg-background p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {editing ? (
-          <>
-            <input
-              value={wordText}
-              onChange={(e) => setWordText(e.target.value)}
-              className="w-full bg-transparent text-2xl font-semibold text-foreground outline-none"
-              autoFocus
-            />
-            <textarea
-              value={definitionText}
-              onChange={(e) => setDefinitionText(e.target.value)}
-              placeholder="Definition…"
-              rows={4}
-              className="mt-3 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none"
-            />
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={save}
-                className="rounded-md bg-foreground px-4 py-2 text-sm text-background"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setWordText(word.word);
-                  setDefinitionText(word.definition ?? "");
-                  setEditing(false);
-                }}
-                className="rounded-md border border-border px-4 py-2 text-sm text-foreground"
-              >
-                Cancel
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <h2 className="text-2xl font-semibold text-foreground">{word.word}</h2>
-            <p className="mt-3 text-sm leading-relaxed text-foreground">
-              {word.definition || <span className="italic text-muted">No definition yet.</span>}
-            </p>
-            <div className="mt-5 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="rounded-md border border-border px-4 py-2 text-sm text-foreground transition-colors hover:bg-hover"
-              >
-                Edit
-              </button>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => onDelete(word.id)}
-                  className="text-xs text-red-600 transition-colors hover:text-red-500"
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="text-xs text-muted transition-colors hover:text-foreground"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      {adding && <AddWordSheet onClose={() => setAdding(false)} />}
+      {active && <WordSheet word={active} onClose={() => setActiveId(null)} />}
     </div>
   );
 }

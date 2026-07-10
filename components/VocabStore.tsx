@@ -9,13 +9,16 @@ import {
 } from "react";
 import { useAuth } from "./AuthProvider";
 import { supabase } from "@/lib/supabase";
-import type { VocabWord } from "@/lib/vocab";
+import type { PartOfSpeech, VocabWord } from "@/lib/vocab";
 
 type VocabWordRow = {
   id: string;
   user_id: string;
   word: string;
   definition: string | null;
+  pos: string | null;
+  example: string | null;
+  synonyms: string[] | null;
   created_at: string;
 };
 
@@ -24,15 +27,26 @@ function fromRow(row: VocabWordRow): VocabWord {
     id: row.id,
     word: row.word,
     definition: row.definition ?? undefined,
+    pos: (row.pos as PartOfSpeech | null) ?? undefined,
+    example: row.example ?? undefined,
+    synonyms: row.synonyms && row.synonyms.length ? row.synonyms : undefined,
     createdAt: row.created_at,
   };
 }
 
+export type VocabWordPatch = {
+  word?: string;
+  definition?: string;
+  pos?: PartOfSpeech;
+  example?: string;
+  synonyms?: string[];
+};
+
 type VocabStore = {
   words: VocabWord[];
   hydrated: boolean;
-  addWord: (word: string, definition?: string) => void;
-  updateWord: (id: string, patch: { word?: string; definition?: string }) => void;
+  addWord: (input: { word: string; definition?: string; pos?: PartOfSpeech }) => void;
+  updateWord: (id: string, patch: VocabWordPatch) => void;
   deleteWord: (id: string) => void;
 };
 
@@ -109,13 +123,14 @@ export function VocabStoreProvider({ children }: { children: React.ReactNode }) 
   }, [user]);
 
   const addWord = useCallback(
-    (word: string, definition?: string) => {
-      const trimmed = word.trim();
+    (input: { word: string; definition?: string; pos?: PartOfSpeech }) => {
+      const trimmed = input.word.trim();
       if (!trimmed) return;
       const entry: VocabWord = {
         id: makeId(),
         word: trimmed,
-        definition: definition?.trim() || undefined,
+        definition: input.definition?.trim() || undefined,
+        pos: input.pos,
         createdAt: new Date().toISOString(),
       };
       setWords((prev) => [...prev, entry]);
@@ -127,6 +142,7 @@ export function VocabStoreProvider({ children }: { children: React.ReactNode }) 
             user_id: user.id,
             word: entry.word,
             definition: entry.definition ?? null,
+            pos: entry.pos ?? null,
             created_at: entry.createdAt,
           })
           .then(({ error }) => {
@@ -138,7 +154,7 @@ export function VocabStoreProvider({ children }: { children: React.ReactNode }) 
   );
 
   const updateWord = useCallback(
-    (id: string, patch: { word?: string; definition?: string }) => {
+    (id: string, patch: VocabWordPatch) => {
       setWords((prev) =>
         prev.map((w) =>
           w.id === id
@@ -146,6 +162,9 @@ export function VocabStoreProvider({ children }: { children: React.ReactNode }) 
                 ...w,
                 word: patch.word !== undefined ? patch.word.trim() || w.word : w.word,
                 definition: patch.definition !== undefined ? patch.definition.trim() || undefined : w.definition,
+                pos: patch.pos !== undefined ? patch.pos : w.pos,
+                example: patch.example !== undefined ? patch.example.trim() || undefined : w.example,
+                synonyms: patch.synonyms !== undefined ? patch.synonyms : w.synonyms,
               }
             : w,
         ),
@@ -154,6 +173,9 @@ export function VocabStoreProvider({ children }: { children: React.ReactNode }) 
       const db: Record<string, unknown> = {};
       if (patch.word !== undefined) db.word = patch.word.trim();
       if (patch.definition !== undefined) db.definition = patch.definition.trim() || null;
+      if (patch.pos !== undefined) db.pos = patch.pos;
+      if (patch.example !== undefined) db.example = patch.example.trim() || null;
+      if (patch.synonyms !== undefined) db.synonyms = patch.synonyms;
       if (Object.keys(db).length === 0) return;
       supabase
         .from("vocab_words")

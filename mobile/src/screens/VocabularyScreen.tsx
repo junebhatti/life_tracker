@@ -1,20 +1,115 @@
 import React, { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
-import { sortWordsAlphabetically } from "../lib/vocab";
-import type { VocabWord } from "../types";
+import { POS_LIST, POS_SHORT, sortWordsAlphabetically } from "../lib/vocab";
+import type { PartOfSpeech, VocabWord } from "../lib/vocab";
 
-// ── definition popup ─────────────────────────────────────────────────────────
+const SERIF = "Times New Roman";
 
-function DefinitionModal({ word, onClose }: { word: VocabWord; onClose: () => void }) {
-  const { updateVocabWord, deleteVocabWord } = useAppState();
-  const [editing, setEditing] = useState(false);
-  const [wordText, setWordText] = useState(word.word);
-  const [definitionText, setDefinitionText] = useState(word.definition ?? "");
+function posLabel(pos?: PartOfSpeech): string {
+  return pos ? POS_SHORT[pos] : "";
+}
+
+// ── part-of-speech picker (plain text row, active one underlined) ────────────
+
+function PosPicker({ value, onChange }: { value: PartOfSpeech; onChange: (pos: PartOfSpeech) => void }) {
+  return (
+    <View style={styles.posRow}>
+      {POS_LIST.map((p) => (
+        <Pressable key={p} onPress={() => onChange(p)} hitSlop={6}>
+          <Text style={[styles.posItem, value === p && styles.posItemActive]}>{p}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+// ── add word sheet ──────────────────────────────────────────────────────────
+
+function AddWordSheet({ onClose }: { onClose: () => void }) {
+  const { addVocabWord } = useAppState();
+  const [word, setWord] = useState("");
+  const [pos, setPos] = useState<PartOfSpeech>("noun");
+  const [definition, setDefinition] = useState("");
 
   function save() {
-    updateVocabWord(word.id, { word: wordText, definition: definitionText });
+    if (!word.trim()) return;
+    addVocabWord({ word, pos, definition });
+    onClose();
+  }
+
+  return (
+    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
+      <Pressable style={styles.scrim} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <View style={styles.sheetHeadRow}>
+              <Text style={styles.sheetEyebrow}>New Word</Text>
+              <Pressable onPress={onClose} hitSlop={8}>
+                <Text style={styles.linkPrimary}>Close ×</Text>
+              </Pressable>
+            </View>
+            <View style={styles.hr} />
+
+            <TextInput
+              value={word}
+              onChangeText={setWord}
+              placeholder="Word"
+              placeholderTextColor="#b3aaa0"
+              autoFocus
+              style={styles.wordInput}
+            />
+
+            <Text style={styles.fieldLabel}>Part of speech</Text>
+            <PosPicker value={pos} onChange={setPos} />
+
+            <Text style={styles.fieldLabel}>Definition</Text>
+            <TextInput
+              value={definition}
+              onChangeText={setDefinition}
+              placeholder="Add a definition…"
+              placeholderTextColor="#b3aaa0"
+              multiline
+              numberOfLines={3}
+              style={styles.textarea}
+            />
+
+            <View style={styles.hrLight} />
+            <View style={styles.actionRow}>
+              <Pressable onPress={onClose} hitSlop={8}>
+                <Text style={styles.linkMuted}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={save} hitSlop={8}>
+                <Text style={styles.linkPrimary}>Save</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── word detail / edit bottom sheet ─────────────────────────────────────────
+
+function WordSheet({ word, onClose }: { word: VocabWord; onClose: () => void }) {
+  const { updateVocabWord, deleteVocabWord } = useAppState();
+  const [editing, setEditing] = useState(false);
+  const [wordVal, setWordVal] = useState(word.word);
+  const [posVal, setPosVal] = useState<PartOfSpeech>(word.pos ?? "noun");
+  const [defVal, setDefVal] = useState(word.definition ?? "");
+  const [exVal, setExVal] = useState(word.example ?? "");
+
+  function startEdit() {
+    setWordVal(word.word);
+    setPosVal(word.pos ?? "noun");
+    setDefVal(word.definition ?? "");
+    setExVal(word.example ?? "");
+    setEditing(true);
+  }
+
+  function save() {
+    updateVocabWord(word.id, { word: wordVal, pos: posVal, definition: defVal, example: exVal });
     setEditing(false);
   }
 
@@ -26,60 +121,83 @@ function DefinitionModal({ word, onClose }: { word: VocabWord; onClose: () => vo
   return (
     <Modal visible animationType="fade" transparent onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={onClose}>
-        <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-          {editing ? (
-            <>
-              <TextInput
-                style={styles.titleInput}
-                value={wordText}
-                onChangeText={setWordText}
-                autoFocus
-              />
-              <TextInput
-                style={styles.definitionInput}
-                value={definitionText}
-                onChangeText={setDefinitionText}
-                placeholder="Definition…"
-                placeholderTextColor={colors.textTertiary}
-                multiline
-              />
-              <View style={styles.editRow}>
-                <Pressable style={styles.saveBtn} onPress={save}>
-                  <Text style={styles.saveBtnText}>Save</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.cancelBtn}
-                  onPress={() => {
-                    setWordText(word.word);
-                    setDefinitionText(word.definition ?? "");
-                    setEditing(false);
-                  }}
-                >
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.title}>{word.word}</Text>
-              <Text style={styles.definition}>
-                {word.definition || <Text style={styles.noDefinition}>No definition yet.</Text>}
-              </Text>
-              <View style={styles.actionRow}>
-                <Pressable style={styles.editBtn} onPress={() => setEditing(true)}>
-                  <Text style={styles.editBtnText}>Edit</Text>
-                </Pressable>
-                <View style={styles.actionRowRight}>
-                  <Pressable onPress={remove} hitSlop={8}>
-                    <Text style={styles.deleteText}>Delete</Text>
+        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            {editing ? (
+              <>
+                <TextInput
+                  value={wordVal}
+                  onChangeText={setWordVal}
+                  autoFocus
+                  style={styles.wordInputEdit}
+                />
+                <Text style={styles.fieldLabel}>Part of speech</Text>
+                <PosPicker value={posVal} onChange={setPosVal} />
+                <Text style={styles.fieldLabel}>Definition</Text>
+                <TextInput
+                  value={defVal}
+                  onChangeText={setDefVal}
+                  placeholder="Add a definition…"
+                  placeholderTextColor="#b3aaa0"
+                  multiline
+                  numberOfLines={3}
+                  style={styles.textarea}
+                />
+                <Text style={styles.fieldLabel}>Example</Text>
+                <TextInput
+                  value={exVal}
+                  onChangeText={setExVal}
+                  placeholder="Add an example sentence…"
+                  placeholderTextColor="#b3aaa0"
+                  multiline
+                  numberOfLines={2}
+                  style={styles.textareaItalic}
+                />
+                <View style={styles.hrLight} />
+                <View style={styles.actionRow}>
+                  <Pressable onPress={() => setEditing(false)} hitSlop={8}>
+                    <Text style={styles.linkMuted}>Cancel</Text>
                   </Pressable>
-                  <Pressable onPress={onClose} hitSlop={8}>
-                    <Text style={styles.closeText}>Close</Text>
+                  <Pressable onPress={save} hitSlop={8}>
+                    <Text style={styles.linkPrimary}>Save</Text>
                   </Pressable>
                 </View>
-              </View>
-            </>
-          )}
+              </>
+            ) : (
+              <>
+                <View style={styles.closeRow}>
+                  <Pressable onPress={onClose} hitSlop={8}>
+                    <Text style={styles.linkPrimary}>Close ×</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.wordTitle}>{word.word}</Text>
+                {word.pos && (
+                  <Text style={styles.posLine}>{word.pos.charAt(0).toUpperCase() + word.pos.slice(1)}</Text>
+                )}
+                {word.definition ? (
+                  <Text style={styles.definitionText}>{word.definition}</Text>
+                ) : (
+                  <Text style={styles.noDefinitionText}>No definition yet.</Text>
+                )}
+                {word.example && <Text style={styles.exampleText}>{word.example}</Text>}
+                {word.synonyms && word.synonyms.length > 0 && (
+                  <>
+                    <Text style={styles.synonymsLabel}>Synonyms</Text>
+                    <Text style={styles.synonymsText}>{word.synonyms.join(" · ")}</Text>
+                  </>
+                )}
+                <View style={styles.hrLight2} />
+                <View style={styles.actionRow}>
+                  <Pressable onPress={startEdit} hitSlop={8}>
+                    <Text style={styles.linkPrimary}>Edit</Text>
+                  </Pressable>
+                  <Pressable onPress={remove} hitSlop={8}>
+                    <Text style={styles.linkDelete}>Delete</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -89,204 +207,108 @@ function DefinitionModal({ word, onClose }: { word: VocabWord; onClose: () => vo
 // ── screen ───────────────────────────────────────────────────────────────────
 
 export default function VocabularyScreen({ onClose }: { onClose: () => void }) {
-  const { vocabWords, addVocabWord } = useAppState();
-  const [search, setSearch] = useState("");
+  const { vocabWords } = useAppState();
+  const [adding, setAdding] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [newWord, setNewWord] = useState("");
-  const [newDefinition, setNewDefinition] = useState("");
 
   const sorted = useMemo(() => sortWordsAlphabetically(vocabWords), [vocabWords]);
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return sorted;
-    return sorted.filter(
-      (w) => w.word.toLowerCase().includes(q) || (w.definition ?? "").toLowerCase().includes(q),
-    );
-  }, [sorted, search]);
-
   const active = activeId ? vocabWords.find((w) => w.id === activeId) ?? null : null;
-
-  function submitNewWord() {
-    if (!newWord.trim()) return;
-    addVocabWord(newWord, newDefinition);
-    setNewWord("");
-    setNewDefinition("");
-  }
 
   return (
     <View style={styles.root}>
-      <View style={styles.sheetHandle} />
-      <View style={styles.sheetHeader}>
-        <Text style={styles.sheetTitle}>English Vocabulary</Text>
-        <Pressable onPress={onClose} hitSlop={12}>
-          <Text style={styles.sheetClose}>✕</Text>
-        </Pressable>
-      </View>
+      <Pressable onPress={onClose} hitSlop={12} style={styles.topBack}>
+        <Text style={styles.backLink}>‹ Close</Text>
+      </Pressable>
 
-      <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.heroRow}>
-          <Text style={styles.hero}>word list</Text>
-          <Text style={styles.heroCount}>/{vocabWords.length}</Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.headerRow}>
+          <Text style={styles.h1}>Chasing Articulation</Text>
+          <View style={styles.headerRight}>
+            <Text style={styles.wordCount}>
+              {vocabWords.length} word{vocabWords.length === 1 ? "" : "s"}
+            </Text>
+            <Pressable onPress={() => setAdding(true)} hitSlop={8} style={styles.addBtn}>
+              <Text style={styles.addBtnText}>+</Text>
+            </Pressable>
+          </View>
         </View>
-        <Text style={styles.subtitle}>Words collected while reading. Tap a word for its definition.</Text>
 
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.addWordInput}
-            value={newWord}
-            onChangeText={setNewWord}
-            placeholder="Add a word…"
-            placeholderTextColor={colors.textTertiary}
-            onSubmitEditing={submitNewWord}
-          />
-          <Pressable style={styles.addBtn} onPress={submitNewWord} disabled={!newWord.trim()}>
-            <Text style={styles.addBtnText}>Add</Text>
-          </Pressable>
-        </View>
-        <TextInput
-          style={styles.addDefInput}
-          value={newDefinition}
-          onChangeText={setNewDefinition}
-          placeholder="Definition (optional)"
-          placeholderTextColor={colors.textTertiary}
-          onSubmitEditing={submitNewWord}
-        />
-
-        <TextInput
-          style={styles.search}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search words or definitions…"
-          placeholderTextColor={colors.textTertiary}
-        />
-
-        {filtered.length === 0 ? (
-          <Text style={styles.empty}>
-            {vocabWords.length === 0 ? "No words yet — add one above." : "No words match your search."}
-          </Text>
+        {vocabWords.length === 0 ? (
+          <Text style={styles.empty}>No words yet — tap + to add one.</Text>
         ) : (
-          <View style={{ marginTop: 6 }}>
-            {filtered.map((w) => (
-              <Pressable key={w.id} style={styles.row} onPress={() => setActiveId(w.id)}>
+          <View style={styles.list}>
+            {sorted.map((w) => (
+              <Pressable key={w.id} onPress={() => setActiveId(w.id)} style={styles.row}>
                 <Text style={styles.rowWord}>{w.word}</Text>
-                {!w.definition && <Text style={styles.rowNoDef}>no definition</Text>}
+                {w.pos && <Text style={styles.rowPos}>{posLabel(w.pos)}</Text>}
               </Pressable>
             ))}
           </View>
         )}
       </ScrollView>
 
-      {active && <DefinitionModal word={active} onClose={() => setActiveId(null)} />}
+      {adding && <AddWordSheet onClose={() => setAdding(false)} />}
+      {active && <WordSheet word={active} onClose={() => setActiveId(null)} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: "center", marginTop: 12, marginBottom: 16 },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  sheetTitle: { fontFamily: fonts.sansMedium, fontSize: 18, color: colors.textPrimary },
-  sheetClose: { fontFamily: fonts.sans, fontSize: 16, color: colors.textTertiary },
-  sheetScroll: { flex: 1 },
-  sheetContent: { paddingHorizontal: 20, paddingBottom: 80 },
+  root: { flex: 1, backgroundColor: "#f6f1ed" },
+  topBack: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 4 },
+  backLink: { fontFamily: SERIF, fontSize: 13, color: "#a39a90" },
 
-  heroRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginTop: 18 },
-  hero: { fontFamily: fonts.serifRegular, fontSize: 34, color: colors.textPrimary, letterSpacing: -0.5 },
-  heroCount: { fontFamily: fonts.serifRegular, fontSize: 20, color: colors.textTertiary },
-  subtitle: { fontFamily: fonts.sans, fontSize: 13, color: colors.textSecondary, marginTop: 6 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 60 },
 
-  addRow: { flexDirection: "row", gap: 8, marginTop: 16 },
-  addWordInput: {
-    width: 130,
-    fontFamily: fonts.sans,
-    fontSize: 14,
-    color: colors.textPrimary,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: colors.surface,
-  },
-  addDefInput: {
-    marginTop: 8,
-    fontFamily: fonts.sans,
-    fontSize: 14,
-    color: colors.textPrimary,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: colors.surface,
-  },
-  addBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, backgroundColor: colors.surfaceDark },
-  addBtnText: { fontFamily: fonts.sansMedium, fontSize: 13, color: "#fff" },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16, marginBottom: 20 },
+  h1: { fontFamily: SERIF, fontSize: 30, lineHeight: 32, color: "#2f2f2f", letterSpacing: -0.3, flexShrink: 1 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+  wordCount: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0" },
+  addBtn: { width: 25, height: 25, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  addBtnText: { fontFamily: SERIF, fontSize: 19, color: "#9b9a97" },
 
-  search: {
-    marginTop: 14,
-    fontFamily: fonts.sans,
-    fontSize: 14,
-    color: colors.textPrimary,
-    paddingVertical: 11,
-    paddingHorizontal: 13,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    borderRadius: 11,
-    backgroundColor: colors.surface,
-  },
+  empty: { fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#b3aaa0", marginTop: 40 },
 
-  empty: { fontFamily: fonts.sans, fontSize: 14, color: colors.textFaint, fontStyle: "italic", marginTop: 26, lineHeight: 20 },
+  list: { marginTop: 24 },
+  row: { flexDirection: "row", alignItems: "center", paddingVertical: 3 },
+  rowWord: { fontFamily: SERIF, fontSize: 30, lineHeight: 32, color: "#2f2f2f" },
+  rowPos: { marginLeft: 10, fontFamily: SERIF, fontSize: 16, color: "#a39a90" },
 
-  row: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  rowWord: { fontFamily: fonts.sans, fontSize: 16, color: colors.textPrimary },
-  rowNoDef: { fontFamily: fonts.monoMedium, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, color: colors.textTertiary },
+  // bottom sheets
+  scrim: { flex: 1, backgroundColor: "rgba(30,28,26,0.45)", justifyContent: "flex-end" },
+  sheet: { maxHeight: "88%", backgroundColor: "#fdfcfa", borderTopWidth: 1, borderTopColor: "#2f2f2f", paddingHorizontal: 24, paddingTop: 26, paddingBottom: 36 },
 
-  // definition popup
-  scrim: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 20 },
-  card: { width: "100%", maxWidth: 340, borderRadius: 16, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, padding: 20 },
-  title: { fontFamily: fonts.sansSemiBold, fontSize: 22, color: colors.textPrimary },
-  definition: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.textPrimary, marginTop: 10 },
-  noDefinition: { fontStyle: "italic", color: colors.textTertiary },
-  actionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 18 },
-  actionRowRight: { flexDirection: "row", gap: 16 },
-  editBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14 },
-  editBtnText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.textPrimary },
-  deleteText: { fontFamily: fonts.sansMedium, fontSize: 12.5, color: colors.accentRed },
-  closeText: { fontFamily: fonts.sansMedium, fontSize: 12.5, color: colors.textSecondary },
+  sheetHeadRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+  sheetEyebrow: { fontFamily: SERIF, fontSize: 12, letterSpacing: 0.4, textTransform: "uppercase", color: "#2f2f2f" },
 
-  titleInput: { fontFamily: fonts.sansSemiBold, fontSize: 20, color: colors.textPrimary, padding: 0 },
-  definitionInput: {
-    marginTop: 10,
-    minHeight: 90,
-    fontFamily: fonts.sans,
-    fontSize: 14,
-    color: colors.textPrimary,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    textAlignVertical: "top",
-  },
-  editRow: { flexDirection: "row", gap: 8, marginTop: 14 },
-  saveBtn: { backgroundColor: colors.surfaceDark, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 16 },
-  saveBtnText: { fontFamily: fonts.sansMedium, fontSize: 13, color: "#fff" },
-  cancelBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 16 },
-  cancelBtnText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.textPrimary },
+  hr: { height: 1, backgroundColor: "#2f2f2f", marginTop: 12, marginBottom: 20 },
+  hrLight: { height: 1, backgroundColor: "#e2dbd2", marginBottom: 16 },
+  hrLight2: { height: 1, backgroundColor: "#e2dbd2", marginTop: 26, marginBottom: 18 },
+
+  wordInput: { fontFamily: SERIF, fontSize: 30, color: "#2f2f2f", paddingVertical: 4, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: "#d8d1c8", marginBottom: 20 },
+  wordInputEdit: { fontFamily: SERIF, fontSize: 26, color: "#2f2f2f", paddingVertical: 4, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: "#d8d1c8", marginBottom: 16 },
+
+  fieldLabel: { fontFamily: SERIF, fontSize: 11, letterSpacing: 0.4, textTransform: "uppercase", color: "#9b9a97", marginBottom: 8 },
+
+  posRow: { flexDirection: "row", flexWrap: "wrap", gap: 14, marginBottom: 18 },
+  posItem: { fontFamily: SERIF, fontSize: 15, color: "#b3aaa0" },
+  posItemActive: { color: "#2f2f2f", textDecorationLine: "underline" },
+
+  textarea: { borderWidth: 1, borderColor: "#e2dbd2", padding: 10, fontFamily: SERIF, fontSize: 15, lineHeight: 22, color: "#2f2f2f", textAlignVertical: "top", marginBottom: 24, minHeight: 70 },
+  textareaItalic: { borderWidth: 1, borderColor: "#e2dbd2", padding: 10, fontFamily: SERIF, fontStyle: "italic", fontSize: 14, lineHeight: 21, color: "#2f2f2f", textAlignVertical: "top", marginBottom: 20, minHeight: 50 },
+
+  actionRow: { flexDirection: "row", gap: 26 },
+  linkPrimary: { fontFamily: SERIF, fontSize: 14, letterSpacing: 0.4, textTransform: "uppercase", color: "#2f2f2f", textDecorationLine: "underline" },
+  linkMuted: { fontFamily: SERIF, fontSize: 14, letterSpacing: 0.4, textTransform: "uppercase", color: "#8a8783", textDecorationLine: "underline" },
+  linkDelete: { fontFamily: SERIF, fontSize: 14, letterSpacing: 0.4, textTransform: "uppercase", color: "#b23a2e", textDecorationLine: "underline" },
+
+  closeRow: { flexDirection: "row", justifyContent: "flex-end" },
+  wordTitle: { fontFamily: SERIF, fontWeight: "700", fontSize: 40, lineHeight: 42, color: "#1a1a1a", marginTop: 14 },
+  posLine: { fontFamily: SERIF, fontStyle: "italic", fontSize: 16, color: "#a39a90", marginTop: 14 },
+  definitionText: { fontFamily: SERIF, fontSize: 17, lineHeight: 26, color: "#2f2f2f", marginTop: 14 },
+  noDefinitionText: { fontFamily: SERIF, fontStyle: "italic", fontSize: 15, lineHeight: 22, color: "#b3aaa0", marginTop: 14 },
+  exampleText: { fontFamily: SERIF, fontStyle: "italic", fontSize: 15, lineHeight: 24, color: "#6a6560", marginTop: 16 },
+  synonymsLabel: { fontFamily: SERIF, fontStyle: "italic", fontSize: 16, color: "#a39a90", marginTop: 26 },
+  synonymsText: { fontFamily: SERIF, fontSize: 16, lineHeight: 22, color: "#a39a90", marginTop: 8 },
 });
