@@ -82,7 +82,7 @@ export default function PeoplePage() {
             />
             <button
               type="submit"
-              className="shrink-0 rounded-md bg-neutral-800 px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+              className="shrink-0 rounded-md bg-[#2323e8] px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
             >
               Add
             </button>
@@ -186,7 +186,7 @@ export default function PeoplePage() {
                                           );
                                           setEditingNoteId(null);
                                         }}
-                                        className="rounded-md bg-neutral-800 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+                                        className="rounded-md bg-[#2323e8] px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
                                       >
                                         Save
                                       </button>

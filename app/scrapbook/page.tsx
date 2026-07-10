@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { NAV_ITEMS } from "@/lib/data";
 import type { ScrapItemRow } from "@/app/api/scrapbook/route";
@@ -41,38 +41,138 @@ function ScrapbookSidebar() {
 
 // ── item cards (full-width, masonry-flow) ────────────────────────────────────
 
+// Every card gets the same footprint — a uniform square thumbnail (or a
+// text card sized to match) — so the grid reads as a tidy portfolio index
+// instead of a jumble of different-sized boxes.
 function ItemCard({ item, onClick }: { item: ScrapItemRow; onClick: () => void }) {
   if (item.type === "img") {
-    const aspect = item.w && item.h ? item.w / item.h : 1;
     return (
       <div onClick={onClick} style={{ cursor: "pointer" }}>
         {item.url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.url} alt={item.label ?? ""} style={{ display: "block", width: "100%", aspectRatio: aspect, objectFit: "cover" }} />
+          <img src={item.url} alt={item.label ?? ""} style={{ display: "block", width: "100%", aspectRatio: "1", objectFit: "cover" }} />
         ) : (
-          <div style={{ width: "100%", height: 140, background: "#ede8e2", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontFamily: ARIAL, fontSize: 11, color: "#8a8783", padding: "0 10px", textAlign: "center" }}>{item.label}</span>
+          <div style={{ width: "100%", aspectRatio: "1", background: "#ede8e2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontFamily: ARIAL, fontSize: 10, color: "#8a8783", padding: "0 8px", textAlign: "center" }}>{item.label}</span>
           </div>
         )}
-        <p style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 11.5, lineHeight: 1.3, color: BLUE, margin: "7px 0 0" }}>{item.label}</p>
+        <p style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 10.5, lineHeight: 1.3, color: BLUE, margin: "6px 0 0" }}>{item.label}</p>
       </div>
     );
   }
 
   if (item.type === "quote") {
     return (
-      <div onClick={onClick} style={{ cursor: "pointer", background: "#f7f4ef", padding: 14 }}>
-        <p style={{ fontFamily: ARIAL, fontStyle: "italic", fontSize: 13, lineHeight: 1.5, color: "#222", margin: 0 }}>&ldquo;{item.text}&rdquo;</p>
+      <div onClick={onClick} style={{ cursor: "pointer", background: "#f7f4ef", padding: 10, aspectRatio: "1", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
+        <p style={{ fontFamily: ARIAL, fontStyle: "italic", fontSize: 11, lineHeight: 1.4, color: "#222", margin: 0 }}>&ldquo;{item.text}&rdquo;</p>
         {item.source && (
-          <p style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 11, color: BLUE, margin: "8px 0 0" }}>{item.source}</p>
+          <p style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 9.5, color: BLUE, margin: "6px 0 0" }}>{item.source}</p>
         )}
       </div>
     );
   }
 
   return (
-    <div onClick={onClick} style={{ cursor: "pointer", background: "#fff8d6", padding: 14 }}>
-      <p style={{ fontFamily: ARIAL, fontSize: 13, lineHeight: 1.5, color: "#222", margin: 0 }}>{item.text}</p>
+    <div onClick={onClick} style={{ cursor: "pointer", background: "#fff8d6", padding: 10, aspectRatio: "1", display: "flex", alignItems: "center", overflow: "hidden" }}>
+      <p style={{ fontFamily: ARIAL, fontSize: 11, lineHeight: 1.4, color: "#222", margin: 0 }}>{item.text}</p>
+    </div>
+  );
+}
+
+// ── image upload (drag-drop, paste, or file picker) ──────────────────────────
+
+async function uploadImageFile(file: File, authHeaders: (extra?: Record<string, string>) => Record<string, string>): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/scrapbook/upload", { method: "POST", headers: authHeaders(), body: form });
+  const data = (await res.json()) as { url?: string; error?: string };
+  if (!res.ok || !data.url) throw new Error(data.error || "Upload failed.");
+  return data.url;
+}
+
+function ImageDropzone({
+  url,
+  onUploaded,
+  onClear,
+  authHeaders,
+}: {
+  url: string;
+  onUploaded: (url: string) => void;
+  onClear: () => void;
+  authHeaders: (extra?: Record<string, string>) => Record<string, string>;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File | null | undefined) {
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const uploadedUrl = await uploadImageFile(file, authHeaders);
+      onUploaded(uploadedUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (url) {
+    return (
+      <div style={{ position: "relative", marginBottom: 8 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt="" style={{ display: "block", width: "100%", height: 160, objectFit: "cover" }} />
+        <span
+          onClick={onClear}
+          style={{ position: "absolute", top: 6, right: 6, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: ARIAL, fontSize: 13, cursor: "pointer" }}
+        >
+          ×
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          void handleFile(e.dataTransfer.files?.[0]);
+        }}
+        onPaste={(e) => {
+          const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
+          const file = item?.getAsFile();
+          if (file) void handleFile(file);
+        }}
+        tabIndex={0}
+        style={{
+          border: `1px dashed ${dragOver ? BLUE : "#d0d0d0"}`,
+          background: dragOver ? "#f0f0ff" : "#fafafa",
+          padding: "22px 12px",
+          textAlign: "center",
+          cursor: "pointer",
+          marginBottom: 8,
+        }}
+      >
+        <p style={{ fontFamily: ARIAL, fontSize: 12, color: "#8a8783", margin: 0 }}>
+          {uploading ? "Uploading…" : "Drag an image here, paste, or click to choose a file"}
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          onChange={(e) => void handleFile(e.target.files?.[0])}
+          style={{ display: "none" }}
+        />
+      </div>
+      {error && <p style={{ fontFamily: ARIAL, fontSize: 11.5, color: "#b23a2e", margin: "0 0 8px" }}>{error}</p>}
     </div>
   );
 }
@@ -80,12 +180,21 @@ function ItemCard({ item, onClick }: { item: ScrapItemRow; onClick: () => void }
 // ── add-item modal ───────────────────────────────────────────────────────────
 
 type NewItemType = "img" | "quote" | "note";
-function AddItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (item: Omit<ScrapItemRow, "id">) => void }) {
+function AddItemModal({
+  onClose,
+  onAdd,
+  authHeaders,
+}: {
+  onClose: () => void;
+  onAdd: (item: Omit<ScrapItemRow, "id">) => void;
+  authHeaders: (extra?: Record<string, string>) => Record<string, string>;
+}) {
   const [type, setType] = useState<NewItemType>("note");
   const [text, setText] = useState("");
   const [source, setSource] = useState("");
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
+  const [showUrlInput, setShowUrlInput] = useState(false);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,20 +249,26 @@ function AddItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (item: O
 
         {type === "img" && (
           <>
-            <input
-              autoFocus
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="Image URL (optional)"
-              style={{ width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
-            />
+            <ImageDropzone url={url} onUploaded={setUrl} onClear={() => setUrl("")} authHeaders={authHeaders} />
+            {showUrlInput || url ? (
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Or paste an image URL"
+                style={{ width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none", marginBottom: 8 }}
+              />
+            ) : (
+              <span onClick={() => setShowUrlInput(true)} style={{ display: "inline-block", fontFamily: ARIAL, fontSize: 11.5, color: "#8a8783", textDecoration: "underline", cursor: "pointer", marginBottom: 8 }}>
+                Or paste an image URL instead
+              </span>
+            )}
             <input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Label / caption"
-              style={{ marginTop: 8, width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
+              style={{ width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
             />
           </>
         )}
@@ -173,11 +288,24 @@ function AddItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (item: O
 
 // ── edit modal ────────────────────────────────────────────────────────────────
 
-function EditItemModal({ item, onClose, onSave, onDelete }: { item: ScrapItemRow; onClose: () => void; onSave: (patch: Partial<ScrapItemRow>) => void; onDelete: () => void }) {
+function EditItemModal({
+  item,
+  onClose,
+  onSave,
+  onDelete,
+  authHeaders,
+}: {
+  item: ScrapItemRow;
+  onClose: () => void;
+  onSave: (patch: Partial<ScrapItemRow>) => void;
+  onDelete: () => void;
+  authHeaders: (extra?: Record<string, string>) => Record<string, string>;
+}) {
   const [text, setText] = useState(item.text ?? "");
   const [source, setSource] = useState(item.source ?? "");
   const [label, setLabel] = useState(item.label ?? "");
   const [url, setUrl] = useState(item.url ?? "");
+  const [showUrlInput, setShowUrlInput] = useState(false);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,20 +342,26 @@ function EditItemModal({ item, onClose, onSave, onDelete }: { item: ScrapItemRow
 
         {item.type === "img" && (
           <>
-            <input
-              autoFocus
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="Image URL"
-              style={{ width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
-            />
+            <ImageDropzone url={url} onUploaded={setUrl} onClear={() => setUrl("")} authHeaders={authHeaders} />
+            {showUrlInput || url ? (
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Or paste an image URL"
+                style={{ width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none", marginBottom: 8 }}
+              />
+            ) : (
+              <span onClick={() => setShowUrlInput(true)} style={{ display: "inline-block", fontFamily: ARIAL, fontSize: 11.5, color: "#8a8783", textDecoration: "underline", cursor: "pointer", marginBottom: 8 }}>
+                Or paste an image URL instead
+              </span>
+            )}
             <input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Label / caption"
-              style={{ marginTop: 8, width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
+              style={{ width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
             />
           </>
         )}
@@ -390,9 +524,9 @@ export default function ScrapbookPage() {
               {items.length === 0 ? "Your scrapbook is empty — click + Add to begin." : "No items match this filter."}
             </p>
           ) : (
-            <div style={{ columns: "3 140px", columnGap: 16 }}>
+            <div style={{ columns: "5 100px", columnGap: 10 }}>
               {visibleItems.map((item) => (
-                <div key={item.id} style={{ breakInside: "avoid", marginBottom: 20, width: "100%" }}>
+                <div key={item.id} style={{ breakInside: "avoid", marginBottom: 14, width: "100%" }}>
                   <ItemCard item={item} onClick={() => setEditItem(item)} />
                 </div>
               ))}
@@ -401,13 +535,14 @@ export default function ScrapbookPage() {
         </div>
       </div>
 
-      {showAdd && <AddItemModal onClose={() => setShowAdd(false)} onAdd={addItem} />}
+      {showAdd && <AddItemModal onClose={() => setShowAdd(false)} onAdd={addItem} authHeaders={authHeaders} />}
       {editItem && (
         <EditItemModal
           item={editItem}
           onClose={() => setEditItem(null)}
           onSave={(patch) => saveItem(editItem.id, patch)}
           onDelete={() => deleteItem(editItem.id)}
+          authHeaders={authHeaders}
         />
       )}
     </div>

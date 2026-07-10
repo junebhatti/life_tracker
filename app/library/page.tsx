@@ -162,7 +162,7 @@ export default function LibraryPage() {
                   onClick={() => setCategory(c)}
                   className={`rounded-md px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
                     category === c
-                      ? "bg-neutral-800 text-white"
+                      ? "bg-[#2323e8] text-white"
                       : "border border-border text-muted hover:text-foreground"
                   }`}
                 >
@@ -292,7 +292,7 @@ export default function LibraryPage() {
                                   editNote(note.id, editTitle, editContent);
                                   setEditingId(null);
                                 }}
-                                className="rounded-md bg-neutral-800 px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+                                className="rounded-md bg-[#2323e8] px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
                               >
                                 Save
                               </button>

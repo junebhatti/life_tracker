@@ -284,7 +284,7 @@ export default function ObsidianSync() {
                   type="button"
                   disabled={syncing}
                   onClick={reSync}
-                  className="rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+                  className="rounded-md bg-[#2323e8] px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba] disabled:opacity-40"
                 >
                   {syncing ? "Syncing…" : "Re-sync now"}
                 </button>
@@ -310,7 +310,7 @@ export default function ObsidianSync() {
                 type="button"
                 disabled={syncing}
                 onClick={pickFolder}
-                className="rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+                className="rounded-md bg-[#2323e8] px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba] disabled:opacity-40"
               >
                 {syncing ? "Syncing…" : "Choose vault folder & sync"}
               </button>
@@ -342,7 +342,7 @@ export default function ObsidianSync() {
             type="button"
             disabled={syncing}
             onClick={() => inputRef.current?.click()}
-            className="mt-3 rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+            className="mt-3 rounded-md bg-[#2323e8] px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba] disabled:opacity-40"
           >
             {syncing ? "Syncing…" : "Choose vault folder & sync"}
           </button>

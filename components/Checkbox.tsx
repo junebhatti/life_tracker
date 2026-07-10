@@ -17,7 +17,7 @@ export default function Checkbox({ checked, onChange, label }: CheckboxProps) {
       onClick={onChange}
       className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
         checked
-          ? "border-neutral-800 bg-neutral-800 text-white"
+          ? "border-[#2323e8] bg-[#2323e8] text-white"
           : "border-neutral-300 bg-white hover:border-neutral-400"
       }`}
     >

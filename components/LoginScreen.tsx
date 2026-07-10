@@ -85,7 +85,7 @@ export default function LoginScreen() {
             <button
               type="submit"
               disabled={sending || !email.trim()}
-              className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+              className="rounded-md bg-[#2323e8] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1c1cba] disabled:opacity-40"
             >
               {sending ? "Sending…" : "Email me a magic link"}
             </button>

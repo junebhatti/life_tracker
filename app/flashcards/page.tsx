@@ -41,7 +41,7 @@ export default function FlashcardsPage() {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto" style={{ background: "#f6f1ed" }}>
+      <main className="flex-1 overflow-y-auto" style={{ background: "#ffffff" }}>
         <div className="mx-auto max-w-[480px] px-5 pb-12 pt-8">
           {deck === null && <DeckChooser onChoose={setDeck} />}
           {deck === "english" && <EnglishDeck onBack={() => setDeck(null)} />}
@@ -109,15 +109,28 @@ const linkStyle = (color: string): React.CSSProperties => ({
   cursor: "pointer",
 });
 
-function GradingControls({ onPrev, onNoIdea, onNeedsWork, onMastered }: { onPrev: () => void; onNoIdea: () => void; onNeedsWork: () => void; onMastered: () => void }) {
+function GradingControls({
+  onPrev,
+  onNoIdea,
+  onNeedsWork,
+  onFeelingGood,
+  onMastered,
+}: {
+  onPrev: () => void;
+  onNoIdea: () => void;
+  onNeedsWork: () => void;
+  onFeelingGood: () => void;
+  onMastered: () => void;
+}) {
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, marginTop: 22 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, marginTop: 22, flexWrap: "wrap" }}>
         <span onClick={onPrev} style={{ fontFamily: SERIF, fontSize: 15, letterSpacing: "0.02em", color: "#a39a90", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", flex: "none" }}>
           ‹ Prev
         </span>
         <span onClick={onNoIdea} style={linkStyle("#b23a2e")}>No idea</span>
         <span onClick={onNeedsWork} style={linkStyle("#8a6a3d")}>Needs work</span>
+        <span onClick={onFeelingGood} style={linkStyle("#2d7d7d")}>Feeling good</span>
         <span onClick={onMastered} style={linkStyle("#3d6b57")}>Mastered</span>
       </div>
       <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 11.5, lineHeight: 1.4, color: "#c5bdb5", textAlign: "center", margin: "16px 0 0" }}>
@@ -143,14 +156,24 @@ function ShuffleReset({ onShuffle, onReset }: { onShuffle: () => void; onReset: 
   );
 }
 
-function SessionStats({ noIdea, needsWork, mastered }: { noIdea: number; needsWork: number; mastered: number }) {
+function SessionStats({
+  noIdea,
+  needsWork,
+  feelingGood,
+  mastered,
+}: {
+  noIdea: number;
+  needsWork: number;
+  feelingGood: number;
+  mastered: number;
+}) {
   return (
     <>
       <div style={{ height: 1, background: "#e2dbd2", margin: "32px 0 0" }} />
       <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", textAlign: "center", margin: "20px 0 22px" }}>
         This session
       </p>
-      <div style={{ display: "flex", justifyContent: "center", gap: 44, marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: 34, marginBottom: 10, flexWrap: "wrap" }}>
         <div style={{ textAlign: "center" }}>
           <p style={{ fontFamily: SERIF, fontSize: 30, color: "#b23a2e", margin: 0 }}>{noIdea}</p>
           <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 11, color: "#c5bdb5", margin: "8px 0 0" }}>no idea</p>
@@ -158,6 +181,10 @@ function SessionStats({ noIdea, needsWork, mastered }: { noIdea: number; needsWo
         <div style={{ textAlign: "center" }}>
           <p style={{ fontFamily: SERIF, fontSize: 30, color: "#8a6a3d", margin: 0 }}>{needsWork}</p>
           <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 11, color: "#c5bdb5", margin: "8px 0 0" }}>needs work</p>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ fontFamily: SERIF, fontSize: 30, color: "#2d7d7d", margin: 0 }}>{feelingGood}</p>
+          <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 11, color: "#c5bdb5", margin: "8px 0 0" }}>feeling good</p>
         </div>
         <div style={{ textAlign: "center" }}>
           <p style={{ fontFamily: SERIF, fontSize: 30, color: "#3d6b57", margin: 0 }}>{mastered}</p>
@@ -219,6 +246,7 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
   }));
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
+  const [sessFeelingGood, setSessFeelingGood] = useState(0);
 
   const total = ds.deck.length;
   const card = total ? ds.deck[ds.index] : null;
@@ -257,6 +285,11 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
   function needsWork() {
     setSessNeedsWork((n) => n + 1);
     requeue(6);
+  }
+
+  function feelingGood() {
+    setSessFeelingGood((n) => n + 1);
+    requeue(14);
   }
 
   function markMastered() {
@@ -336,9 +369,9 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
         {total ? `${ds.index + 1} / ${total}` : "All mastered!"}
       </p>
 
-      <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onMastered={markMastered} />
+      <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onFeelingGood={feelingGood} onMastered={markMastered} />
       <ShuffleReset onShuffle={doShuffle} onReset={doReset} />
-      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} mastered={mastered.size} />
+      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} feelingGood={sessFeelingGood} mastered={mastered.size} />
     </>
   );
 }
@@ -362,6 +395,7 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
 
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
+  const [sessFeelingGood, setSessFeelingGood] = useState(0);
 
   const total = ds ? ds.deck.length : 0;
   const card = ds && total ? ds.deck[ds.index] : null;
@@ -396,6 +430,11 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
   function needsWork() {
     setSessNeedsWork((n) => n + 1);
     requeue(6);
+  }
+
+  function feelingGood() {
+    setSessFeelingGood((n) => n + 1);
+    requeue(14);
   }
 
   function markMastered() {
@@ -457,9 +496,9 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
         {total ? `${(ds?.index ?? 0) + 1} / ${total}` : total === 0 && quizzable.length === 0 ? "No words to study yet" : "All mastered!"}
       </p>
 
-      <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onMastered={markMastered} />
+      <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onFeelingGood={feelingGood} onMastered={markMastered} />
       <ShuffleReset onShuffle={doShuffle} onReset={doReset} />
-      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} mastered={mastered.size} />
+      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} feelingGood={sessFeelingGood} mastered={mastered.size} />
     </>
   );
 }

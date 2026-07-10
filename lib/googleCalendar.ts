@@ -173,6 +173,18 @@ function eventStartMs(item: GoogleEventItem): number {
   return new Date(item.start?.dateTime ?? Date.now()).getTime();
 }
 
+/** Identifies "the same event" content-wise, independent of which account it
+ *  was fetched from. Google ids are namespaced per account (see
+ *  fetchAccountEvents), so if two configured accounts happen to resolve to
+ *  the same underlying calendar — e.g. the same Google account connected
+ *  twice as account 1 and account 2 — every event comes back once per
+ *  account with different ids and would otherwise show up twice. */
+function eventSignature(item: GoogleEventItem): string {
+  const start = item.start?.date ?? item.start?.dateTime ?? "";
+  const end = item.end?.date ?? item.end?.dateTime ?? "";
+  return `${item.summary ?? ""}|${start}|${end}`;
+}
+
 /** The same full-calendar-days-through-today+WINDOW_DAYS bound used for the Up Next feed. */
 function upcomingWindow(): { now: Date; todayKey: string; timeMax: Date } {
   const now = new Date();
@@ -264,12 +276,16 @@ export async function fetchUpcomingEvents(maxResults = MAX_UP_NEXT): Promise<Cal
   // singleEvents=true expands each recurring series (birthdays, weekly
   // 1:1s) into one item per upcoming occurrence. Keep only the soonest
   // occurrence of each series so they don't crowd out one-off events.
+  // Also drop cross-account content duplicates (see eventSignature).
   const seenSeries = new Set<string>();
+  const seenSignatures = new Set<string>();
   const deduped: GoogleEventItem[] = [];
   for (const item of allItems) {
     const seriesKey = item.recurringEventId ?? item.id;
-    if (seenSeries.has(seriesKey)) continue;
+    const signature = eventSignature(item);
+    if (seenSeries.has(seriesKey) || seenSignatures.has(signature)) continue;
     seenSeries.add(seriesKey);
+    seenSignatures.add(signature);
     deduped.push(item);
     if (deduped.length >= maxResults) break;
   }
@@ -330,7 +346,21 @@ export async function fetchAgendaEvents(): Promise<EditableCalendarEvent[]> {
   }
 
   allItems.sort((a, b) => eventStartMs(a) - eventStartMs(b));
-  return allItems.map(toEditableEvent);
+
+  // Unlike fetchUpcomingEvents this intentionally keeps every recurring
+  // occurrence, but still drops cross-account content duplicates (see
+  // eventSignature) — each occurrence has a distinct start/end, so this
+  // only collapses events that are byte-identical across accounts.
+  const seenSignatures = new Set<string>();
+  const deduped: GoogleEventItem[] = [];
+  for (const item of allItems) {
+    const signature = eventSignature(item);
+    if (seenSignatures.has(signature)) continue;
+    seenSignatures.add(signature);
+    deduped.push(item);
+  }
+
+  return deduped.map(toEditableEvent);
 }
 
 function eventBody(input: CalendarEventInput) {

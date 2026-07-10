@@ -127,7 +127,7 @@ export default function BudgetPage() {
                 onClick={() => setType("expense")}
                 className={`rounded-md px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
                   type === "expense"
-                    ? "bg-neutral-800 text-white"
+                    ? "bg-[#2323e8] text-white"
                     : "border border-border text-muted hover:text-foreground"
                 }`}
               >
@@ -138,7 +138,7 @@ export default function BudgetPage() {
                 onClick={() => setType("income")}
                 className={`rounded-md px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
                   type === "income"
-                    ? "bg-neutral-800 text-white"
+                    ? "bg-[#2323e8] text-white"
                     : "border border-border text-muted hover:text-foreground"
                 }`}
               >
@@ -179,7 +179,7 @@ export default function BudgetPage() {
               />
               <button
                 type="submit"
-                className="shrink-0 rounded-md bg-neutral-800 px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+                className="shrink-0 rounded-md bg-[#2323e8] px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
               >
                 Add
               </button>

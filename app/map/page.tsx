@@ -148,7 +148,7 @@ export default function MapPage() {
           <button
             type="button"
             onClick={() => { setPanel("add"); setSelectedPlace(null); }}
-            className="rounded-md bg-neutral-800 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-white hover:bg-neutral-700"
+            className="rounded-md bg-[#2323e8] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-white hover:bg-[#1c1cba]"
           >
             + Add
           </button>
@@ -520,7 +520,7 @@ function GeocoderPanel({
             <button
               type="submit"
               disabled={saving}
-              className="mt-1 rounded-md bg-neutral-800 py-2 text-[11px] font-medium uppercase tracking-wider text-white hover:bg-neutral-700 disabled:opacity-50"
+              className="mt-1 rounded-md bg-[#2323e8] py-2 text-[11px] font-medium uppercase tracking-wider text-white hover:bg-[#1c1cba] disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save Pin"}
             </button>

@@ -222,7 +222,7 @@ export default function ProjectDetail() {
                         aria-label={`Set color ${c}`}
                         className={`h-5 w-5 rounded-full border-2 transition ${
                           project.color === c
-                            ? "border-neutral-800"
+                            ? "border-[#2323e8]"
                             : "border-transparent hover:scale-110"
                         }`}
                         style={{ backgroundColor: c }}
@@ -287,7 +287,7 @@ export default function ProjectDetail() {
                 />
                 <button
                   type="submit"
-                  className="rounded-md bg-neutral-800 px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+                  className="rounded-md bg-[#2323e8] px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
                 >
                   Save
                 </button>
@@ -362,7 +362,7 @@ export default function ProjectDetail() {
           />
           <button
             type="submit"
-            className="rounded-md bg-neutral-800 px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+            className="rounded-md bg-[#2323e8] px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
           >
             Add
           </button>
@@ -463,7 +463,7 @@ export default function ProjectDetail() {
           </select>
           <button
             type="submit"
-            className="rounded-md bg-neutral-800 px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+            className="rounded-md bg-[#2323e8] px-3 py-2 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
           >
             Add
           </button>
@@ -484,7 +484,7 @@ export default function ProjectDetail() {
                 onClick={() => setActKind(k)}
                 className={`rounded px-3 py-1 text-xs font-medium uppercase tracking-wider transition-colors ${
                   actKind === k
-                    ? "bg-neutral-800 text-white"
+                    ? "bg-[#2323e8] text-white"
                     : "text-muted hover:text-foreground"
                 }`}
               >
@@ -533,7 +533,7 @@ export default function ProjectDetail() {
             )}
             <button
               type="submit"
-              className="rounded-md bg-neutral-800 px-4 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+              className="rounded-md bg-[#2323e8] px-4 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
             >
               Log
             </button>

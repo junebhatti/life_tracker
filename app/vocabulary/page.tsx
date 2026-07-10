@@ -257,14 +257,19 @@ export default function VocabularyPage() {
   const { words, hydrated } = useVocab();
   const [adding, setAdding] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [missingOnly, setMissingOnly] = useState(false);
 
-  const sorted = useMemo(() => sortWordsAlphabetically(words), [words]);
+  const missingCount = useMemo(() => words.filter((w) => !w.definition || !w.definition.trim()).length, [words]);
+  const sorted = useMemo(() => {
+    const base = missingOnly ? words.filter((w) => !w.definition || !w.definition.trim()) : words;
+    return sortWordsAlphabetically(base);
+  }, [words, missingOnly]);
   const active = activeId ? words.find((w) => w.id === activeId) ?? null : null;
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto" style={{ background: "#f6f1ed" }}>
+      <main className="flex-1 overflow-y-auto" style={{ background: "#ffffff" }}>
         <div className="mx-auto max-w-2xl px-5 pb-16 pt-11">
           <Link
             href="/projects"
@@ -305,6 +310,26 @@ export default function VocabularyPage() {
             </div>
           </div>
 
+          {missingCount > 0 && (
+            <div style={{ marginTop: -12, marginBottom: 20 }}>
+              <span
+                onClick={() => setMissingOnly((v) => !v)}
+                style={{
+                  fontFamily: SERIF,
+                  fontSize: 12,
+                  letterSpacing: "0.02em",
+                  textTransform: "uppercase",
+                  color: missingOnly ? "#2f2f2f" : "#a39a90",
+                  textDecoration: missingOnly ? "underline" : "none",
+                  textUnderlineOffset: 3,
+                  cursor: "pointer",
+                }}
+              >
+                {missingOnly ? "Showing missing definitions" : `${missingCount} missing a definition`}
+              </span>
+            </div>
+          )}
+
           {!hydrated && (
             <div className="mt-6 flex flex-col gap-3">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -319,7 +344,13 @@ export default function VocabularyPage() {
             </p>
           )}
 
-          {hydrated && words.length > 0 && (
+          {hydrated && words.length > 0 && sorted.length === 0 && (
+            <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#b3aaa0", marginTop: 40 }}>
+              Every word has a definition.
+            </p>
+          )}
+
+          {hydrated && sorted.length > 0 && (
             <div style={{ marginTop: 44 }}>
               {sorted.map((w) => (
                 <div

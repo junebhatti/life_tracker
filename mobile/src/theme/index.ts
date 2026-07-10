@@ -1,11 +1,13 @@
-/** Design tokens — match the Cloud Design handoff pixel-for-pixel. Do not invent new values here. */
+/** Design tokens — clean white palette with a restrained blue accent (matches
+ *  the web app's re-theme; the Cloud Design handoff's warm-paper palette has
+ *  been retired in favor of this one). */
 
 export const colors = {
-  background: "#f6f1ed",
-  surface: "#fdfbf9",
-  surfaceDark: "#2f2d2b",
-  border: "#ece6df",
-  borderStrong: "#e7e0d8",
+  background: "#ffffff",
+  surface: "#ffffff",
+  surfaceDark: "#2323e8",
+  border: "#ededec",
+  borderStrong: "#e0e0e0",
   textPrimary: "#2f2f2f",
   textSecondary: "#9b9a97",
   textTertiary: "#b3aaa0",
@@ -13,14 +15,14 @@ export const colors = {
   accentRed: "#b23a2e",
   overdueRed: "#cf4030",
   success: "#16a34a",
-  chevron: "#cfc7be",
-  scrim: "rgba(40,36,33,0.52)",
-  chipBg: "#ede8e2",
-  chipText: "#6a6560",
-  chipDashed: "#c8c0b6",
-  navBg: "rgba(246,241,237,0.92)",
-  navBorder: "#e7e0d8",
-  inputBorder: "#e7e0d8",
+  chevron: "#c7c7c7",
+  scrim: "rgba(0,0,0,0.5)",
+  chipBg: "#f1f1f0",
+  chipText: "#666660",
+  chipDashed: "#d0d0d0",
+  navBg: "rgba(255,255,255,0.92)",
+  navBorder: "#e5e5e5",
+  inputBorder: "#e5e5e5",
 } as const;
 
 export const fonts = {

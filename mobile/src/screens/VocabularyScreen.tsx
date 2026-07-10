@@ -210,8 +210,13 @@ export default function VocabularyScreen({ onClose }: { onClose: () => void }) {
   const { vocabWords } = useAppState();
   const [adding, setAdding] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [missingOnly, setMissingOnly] = useState(false);
 
-  const sorted = useMemo(() => sortWordsAlphabetically(vocabWords), [vocabWords]);
+  const missingCount = useMemo(() => vocabWords.filter((w) => !w.definition || !w.definition.trim()).length, [vocabWords]);
+  const sorted = useMemo(() => {
+    const base = missingOnly ? vocabWords.filter((w) => !w.definition || !w.definition.trim()) : vocabWords;
+    return sortWordsAlphabetically(base);
+  }, [vocabWords, missingOnly]);
   const active = activeId ? vocabWords.find((w) => w.id === activeId) ?? null : null;
 
   return (
@@ -233,8 +238,18 @@ export default function VocabularyScreen({ onClose }: { onClose: () => void }) {
           </View>
         </View>
 
+        {missingCount > 0 && (
+          <Pressable onPress={() => setMissingOnly((v) => !v)} hitSlop={6} style={styles.missingFilter}>
+            <Text style={[styles.missingFilterText, missingOnly && styles.missingFilterTextActive]}>
+              {missingOnly ? "Showing missing definitions" : `${missingCount} missing a definition`}
+            </Text>
+          </Pressable>
+        )}
+
         {vocabWords.length === 0 ? (
           <Text style={styles.empty}>No words yet — tap + to add one.</Text>
+        ) : sorted.length === 0 ? (
+          <Text style={styles.empty}>Every word has a definition.</Text>
         ) : (
           <View style={styles.list}>
             {sorted.map((w) => (
@@ -254,7 +269,7 @@ export default function VocabularyScreen({ onClose }: { onClose: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f6f1ed" },
+  root: { flex: 1, backgroundColor: "#ffffff" },
   topBack: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 4 },
   backLink: { fontFamily: SERIF, fontSize: 13, color: "#a39a90" },
 
@@ -267,6 +282,10 @@ const styles = StyleSheet.create({
   wordCount: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0" },
   addBtn: { width: 25, height: 25, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   addBtnText: { fontFamily: SERIF, fontSize: 19, color: "#9b9a97" },
+
+  missingFilter: { marginTop: 8 },
+  missingFilterText: { fontFamily: SERIF, fontSize: 12, letterSpacing: 0.4, textTransform: "uppercase", color: "#a39a90" },
+  missingFilterTextActive: { color: "#2f2f2f", textDecorationLine: "underline" },
 
   empty: { fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#b3aaa0", marginTop: 40 },
 

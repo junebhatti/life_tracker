@@ -150,7 +150,7 @@ export default function NewTaskForm({
                   onClick={() => setStatus(s)}
                   className={`flex-1 rounded px-2 py-1.5 text-xs font-medium capitalize transition-colors ${
                     status === s
-                      ? "bg-neutral-800 text-white"
+                      ? "bg-[#2323e8] text-white"
                       : "text-muted hover:text-foreground"
                   }`}
                 >
@@ -182,7 +182,7 @@ export default function NewTaskForm({
           <button
             type="submit"
             disabled={!title.trim()}
-            className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+            className="rounded-md bg-[#2323e8] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1c1cba] disabled:opacity-40"
           >
             {editing ? "Save" : "Add task"}
           </button>

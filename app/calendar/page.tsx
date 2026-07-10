@@ -324,7 +324,7 @@ export default function CalendarPage() {
                     className={[
                       "flex h-5 w-5 items-center justify-center rounded-full text-[11px]",
                       isToday
-                        ? "bg-neutral-800 font-semibold text-white"
+                        ? "bg-[#2323e8] font-semibold text-white"
                         : inMonth
                           ? "text-foreground"
                           : "text-muted",
@@ -373,7 +373,7 @@ export default function CalendarPage() {
                 <span className="text-[10px] uppercase tracking-wider text-muted">{DAY_NAMES[i]}</span>
                 <span
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-sm ${
-                    isToday ? "bg-neutral-800 font-medium text-white" : "text-foreground"
+                    isToday ? "bg-[#2323e8] font-medium text-white" : "text-foreground"
                   }`}
                 >
                   {d}
@@ -492,7 +492,7 @@ export default function CalendarPage() {
                       onClick={() => setViewMode(v)}
                       className={`rounded px-3 py-1 text-xs font-medium capitalize transition-colors ${
                         viewMode === v
-                          ? "bg-neutral-800 text-white"
+                          ? "bg-[#2323e8] text-white"
                           : "text-muted hover:text-foreground"
                       }`}
                     >
@@ -547,7 +547,7 @@ export default function CalendarPage() {
                           : todayKey,
                     })
                   }
-                  className="ml-1 rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-neutral-700"
+                  className="ml-1 rounded-md bg-[#2323e8] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1c1cba]"
                 >
                   + Add event
                 </button>

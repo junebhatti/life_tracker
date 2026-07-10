@@ -36,7 +36,7 @@ export default function RoutinesPage() {
             <button
               type="button"
               onClick={() => setShowForm(true)}
-              className="rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+              className="rounded-md bg-[#2323e8] px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
             >
               + New Routine
             </button>

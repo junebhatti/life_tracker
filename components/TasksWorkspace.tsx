@@ -94,7 +94,7 @@ export default function TasksWorkspace() {
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700"
+            className="rounded-md bg-[#2323e8] px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba]"
           >
             + New Task
           </button>
@@ -110,7 +110,7 @@ export default function TasksWorkspace() {
             onClick={() => setTab(t)}
             className={`-mb-px border-b-2 px-3 py-2 text-sm capitalize transition-colors ${
               tab === t
-                ? "border-neutral-800 font-medium text-foreground"
+                ? "border-[#2323e8] font-medium text-foreground"
                 : "border-transparent text-muted hover:text-foreground"
             }`}
           >
@@ -280,7 +280,7 @@ function Chip({
       onClick={onClick}
       className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors ${
         active
-          ? "border-neutral-800 bg-neutral-800 text-white"
+          ? "border-[#2323e8] bg-[#2323e8] text-white"
           : "border-border text-muted hover:border-neutral-400 hover:text-foreground"
       }`}
     >

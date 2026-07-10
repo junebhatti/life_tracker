@@ -160,7 +160,7 @@ export default function WaterTracker() {
                 type="button"
                 onClick={() => setCustomUnit(u)}
                 className={`rounded px-3 py-1.5 text-xs font-medium uppercase transition-colors ${
-                  customUnit === u ? "bg-neutral-800 text-white" : "text-muted hover:text-foreground"
+                  customUnit === u ? "bg-[#2323e8] text-white" : "text-muted hover:text-foreground"
                 }`}
               >
                 {u}

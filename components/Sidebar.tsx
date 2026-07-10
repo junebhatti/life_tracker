@@ -32,7 +32,7 @@ export default function Sidebar() {
               href={item.href}
               className={`rounded-md px-2 py-1.5 text-sm transition-colors ${
                 active
-                  ? "bg-hover font-medium text-foreground"
+                  ? "bg-hover font-medium text-[#2323e8]"
                   : "text-neutral-600 hover:bg-hover"
               }`}
             >
@@ -47,7 +47,7 @@ export default function Sidebar() {
           href="/settings"
           className={`rounded-md px-2 py-1.5 text-sm transition-colors ${
             pathname.startsWith("/settings")
-              ? "bg-hover font-medium text-foreground"
+              ? "bg-hover font-medium text-[#2323e8]"
               : "text-neutral-600 hover:bg-hover"
           }`}
         >

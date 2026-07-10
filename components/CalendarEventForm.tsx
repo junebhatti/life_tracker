@@ -210,7 +210,7 @@ export default function CalendarEventForm({
                   onClick={() => setAccountKey(key)}
                   className={`flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors ${
                     accountKey === key
-                      ? "bg-neutral-800 text-white"
+                      ? "bg-[#2323e8] text-white"
                       : "text-muted hover:text-foreground"
                   }`}
                 >
@@ -248,7 +248,7 @@ export default function CalendarEventForm({
             <button
               type="submit"
               disabled={!title.trim() || saving || deleting}
-              className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+              className="rounded-md bg-[#2323e8] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1c1cba] disabled:opacity-40"
             >
               {saving ? "Saving…" : editing ? "Save" : "Add event"}
             </button>

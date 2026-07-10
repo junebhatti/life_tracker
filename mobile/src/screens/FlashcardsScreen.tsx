@@ -63,6 +63,7 @@ export default function FlashcardsScreen() {
   }));
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
+  const [sessFeelingGood, setSessFeelingGood] = useState(0);
 
   const total = ds.deck.length;
   const card = total ? ds.deck[ds.index] : null;
@@ -101,6 +102,11 @@ export default function FlashcardsScreen() {
   function needsWork() {
     setSessNeedsWork((n) => n + 1);
     requeue(6);
+  }
+
+  function feelingGood() {
+    setSessFeelingGood((n) => n + 1);
+    requeue(14);
   }
 
   function markMastered() {
@@ -189,6 +195,9 @@ export default function FlashcardsScreen() {
         <Pressable onPress={needsWork} hitSlop={8}>
           <Text style={[styles.gradeLink, { color: "#8a6a3d" }]}>Needs work</Text>
         </Pressable>
+        <Pressable onPress={feelingGood} hitSlop={8}>
+          <Text style={[styles.gradeLink, { color: "#2d7d7d" }]}>Feeling good</Text>
+        </Pressable>
         <Pressable onPress={markMastered} hitSlop={8}>
           <Text style={[styles.gradeLink, { color: "#3d6b57" }]}>Mastered</Text>
         </Pressable>
@@ -215,6 +224,10 @@ export default function FlashcardsScreen() {
         <View style={styles.statCol}>
           <Text style={[styles.statNum, { color: "#8a6a3d" }]}>{sessNeedsWork}</Text>
           <Text style={styles.statLabel}>needs work</Text>
+        </View>
+        <View style={styles.statCol}>
+          <Text style={[styles.statNum, { color: "#2d7d7d" }]}>{sessFeelingGood}</Text>
+          <Text style={styles.statLabel}>feeling good</Text>
         </View>
         <View style={styles.statCol}>
           <Text style={[styles.statNum, { color: "#3d6b57" }]}>{mastered.size}</Text>
@@ -275,7 +288,7 @@ const styles = StyleSheet.create({
 
   hr2: { height: 1, backgroundColor: "#e2dbd2", marginTop: 32 },
   sessionLabel: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", textAlign: "center", marginTop: 20, marginBottom: 22 },
-  statsRow: { flexDirection: "row", justifyContent: "center", gap: 44, marginBottom: 30 },
+  statsRow: { flexDirection: "row", justifyContent: "center", gap: 28, marginBottom: 30, flexWrap: "wrap" },
   statCol: { alignItems: "center" },
   statNum: { fontFamily: SERIF, fontSize: 30 },
   statLabel: { fontFamily: SERIF, fontStyle: "italic", fontSize: 11, color: "#c5bdb5", marginTop: 8 },

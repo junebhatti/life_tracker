@@ -113,7 +113,7 @@ export default function NewProjectForm({
                 onClick={() => setType(opt.value)}
                 className={`flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors ${
                   type === opt.value
-                    ? "bg-neutral-800 text-white"
+                    ? "bg-[#2323e8] text-white"
                     : "text-muted hover:text-foreground"
                 }`}
               >
@@ -136,7 +136,7 @@ export default function NewProjectForm({
                 aria-label={`Color ${c}`}
                 className={`h-6 w-6 rounded-full border-2 transition-transform ${
                   color === c
-                    ? "scale-110 border-neutral-800"
+                    ? "scale-110 border-[#2323e8]"
                     : "border-transparent"
                 }`}
                 style={{ backgroundColor: c }}
@@ -156,7 +156,7 @@ export default function NewProjectForm({
           <button
             type="submit"
             disabled={!name.trim()}
-            className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+            className="rounded-md bg-[#2323e8] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1c1cba] disabled:opacity-40"
           >
             Create
           </button>

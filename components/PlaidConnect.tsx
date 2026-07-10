@@ -104,7 +104,7 @@ export default function PlaidConnect() {
           type="button"
           disabled={!ready}
           onClick={() => open()}
-          className="rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-neutral-700 disabled:opacity-40"
+          className="rounded-md bg-[#2323e8] px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white transition-colors hover:bg-[#1c1cba] disabled:opacity-40"
         >
           {status?.linked ? "Connect another account" : "Connect bank account"}
         </button>
