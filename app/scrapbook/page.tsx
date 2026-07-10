@@ -1,102 +1,98 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Sidebar from "@/components/Sidebar";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { NAV_ITEMS } from "@/lib/data";
 import type { ScrapItemRow } from "@/app/api/scrapbook/route";
 
-type DragState =
-  | { kind: "pan"; startMx: number; startMy: number; startTx: number; startTy: number }
-  | { kind: "item"; id: string; startMx: number; startMy: number; startX: number; startY: number };
+const ARIAL = "Arial, Helvetica, sans-serif";
+const BLUE = "#2323e8";
 
-const CANVAS_W = 1400;
-const CANVAS_H = 1800;
-const MIN_SCALE = 0.2;
-const MAX_SCALE = 3;
+const FILTERS = ["Photos", "Quotes", "Journal"] as const;
+const FILTER_TYPE: Record<(typeof FILTERS)[number], ScrapItemRow["type"]> = {
+  Photos: "img",
+  Quotes: "quote",
+  Journal: "note",
+};
 
-function clamp(v: number, lo: number, hi: number) {
-  return Math.min(hi, Math.max(lo, v));
-}
+// ── sidebar (distinct sub-brand treatment — same real nav, restyled) ─────────
 
-// ── Item renderers ─────────────────────────────────────────────────────────
-
-function ScrapImage({ item }: { item: ScrapItemRow & { type: "img" } }) {
-  // Clean "sticker" cutout: the image fills the whole box (object-cover, so no
-  // letterbox bars), clipped to soft rounded corners with a gentle drop shadow
-  // to lift it off the canvas — no matte/frame around it.
+function ScrapbookSidebar() {
+  const pathname = usePathname();
   return (
-    <div
-      style={{
-        width: item.w,
-        height: item.h ?? item.w,
-        boxShadow: "0 6px 18px rgba(0,0,0,0.20)",
-      }}
-      className="overflow-hidden rounded-2xl"
-    >
-      {item.url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={item.url}
-          alt={item.label ?? ""}
-          className="block h-full w-full object-cover"
-          draggable={false}
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-[#ede8e2]">
-          <span className="px-2 text-center font-mono text-[10px] text-neutral-500">{item.label}</span>
-        </div>
-      )}
+    <div style={{ width: 130, flex: "none", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 12, borderRight: "1px solid #e2e2e2" }}>
+      {NAV_ITEMS.map((item) => {
+        const active = pathname === item.href;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            style={{ fontFamily: ARIAL, fontSize: 12.5, lineHeight: 1.3, fontWeight: active ? 700 : 400, color: active ? BLUE : "#222" }}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
     </div>
   );
 }
 
-function ScrapQuote({ item }: { item: ScrapItemRow & { type: "quote" } }) {
+// ── item cards (full-width, masonry-flow) ────────────────────────────────────
+
+function ItemCard({ item, onClick }: { item: ScrapItemRow; onClick: () => void }) {
+  if (item.type === "img") {
+    const aspect = item.w && item.h ? item.w / item.h : 1;
+    return (
+      <div onClick={onClick} style={{ cursor: "pointer" }}>
+        {item.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.url} alt={item.label ?? ""} style={{ display: "block", width: "100%", aspectRatio: aspect, objectFit: "cover" }} />
+        ) : (
+          <div style={{ width: "100%", height: 140, background: "#ede8e2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontFamily: ARIAL, fontSize: 11, color: "#8a8783", padding: "0 10px", textAlign: "center" }}>{item.label}</span>
+          </div>
+        )}
+        <p style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 11.5, lineHeight: 1.3, color: BLUE, margin: "7px 0 0" }}>{item.label}</p>
+      </div>
+    );
+  }
+
+  if (item.type === "quote") {
+    return (
+      <div onClick={onClick} style={{ cursor: "pointer", background: "#f7f4ef", padding: 14 }}>
+        <p style={{ fontFamily: ARIAL, fontStyle: "italic", fontSize: 13, lineHeight: 1.5, color: "#222", margin: 0 }}>&ldquo;{item.text}&rdquo;</p>
+        {item.source && (
+          <p style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 11, color: BLUE, margin: "8px 0 0" }}>{item.source}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div style={{ width: item.w }} className="rounded-lg bg-[#f7f4ef] p-3">
-      <p className="font-serif text-[17px] leading-snug text-neutral-800">
-        &ldquo;{item.text}&rdquo;
-      </p>
-      {item.source && (
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-wide text-neutral-500">
-          {item.source}
-        </p>
-      )}
+    <div onClick={onClick} style={{ cursor: "pointer", background: "#fff8d6", padding: 14 }}>
+      <p style={{ fontFamily: ARIAL, fontSize: 13, lineHeight: 1.5, color: "#222", margin: 0 }}>{item.text}</p>
     </div>
   );
 }
 
-function ScrapNote({ item }: { item: ScrapItemRow & { type: "note" } }) {
-  return (
-    <div style={{ width: item.w }} className="rounded-sm bg-[#fff8d6] p-3 shadow-sm">
-      <p className="font-serif text-[15px] leading-snug text-neutral-800">{item.text}</p>
-    </div>
-  );
-}
-
-// ── Add-item modal ─────────────────────────────────────────────────────────
+// ── add-item modal ───────────────────────────────────────────────────────────
 
 type NewItemType = "img" | "quote" | "note";
-function AddItemModal({
-  onClose,
-  onAdd,
-}: {
-  onClose: () => void;
-  onAdd: (item: Omit<ScrapItemRow, "id">) => void;
-}) {
+function AddItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (item: Omit<ScrapItemRow, "id">) => void }) {
   const [type, setType] = useState<NewItemType>("note");
   const [text, setText] = useState("");
   const [source, setSource] = useState("");
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
-  const [w, setW] = useState(200);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (type === "note" && !text.trim()) return;
-    if (type === "quote" && !text.trim()) return;
+    if ((type === "note" || type === "quote") && !text.trim()) return;
     if (type === "img" && !label.trim() && !url.trim()) return;
 
-    const base = { x: 40, y: 40, w, type } as const;
+    const base = { x: 0, y: 0, w: 200, type } as const;
     if (type === "note") onAdd({ ...base, type: "note", text: text.trim() });
     else if (type === "quote") onAdd({ ...base, type: "quote", text: text.trim(), source: source.trim() || undefined });
     else onAdd({ ...base, type: "img", label: label.trim() || "Image", url: url.trim() || undefined });
@@ -104,26 +100,17 @@ function AddItemModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/25 p-4 pt-24"
-      onClick={onClose}
-    >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-        className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-xl"
-      >
-        <h2 className="mb-4 text-base font-semibold text-foreground">Add to scrapbook</h2>
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "flex-start", justifyContent: "center", background: "rgba(0,0,0,0.25)", padding: 16, paddingTop: 96 }} onClick={onClose}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "100%", maxWidth: 420, background: "#fff", padding: 24, fontFamily: ARIAL }}>
+        <h2 style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 15, color: "#222", margin: "0 0 16px" }}>Add to scrapbook</h2>
 
-        <div className="mb-4 flex rounded-md border border-border p-0.5">
+        <div style={{ display: "flex", border: "1px solid #e2e2e2", marginBottom: 16 }}>
           {(["note", "quote", "img"] as NewItemType[]).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setType(t)}
-              className={`flex-1 rounded py-1.5 text-xs font-medium capitalize transition-colors ${
-                type === t ? "bg-neutral-800 text-white" : "text-muted hover:text-foreground"
-              }`}
+              style={{ flex: 1, padding: "7px 0", fontFamily: ARIAL, fontSize: 12, fontWeight: 500, textTransform: "capitalize", border: "none", cursor: "pointer", background: type === t ? BLUE : "transparent", color: type === t ? "#fff" : "#222" }}
             >
               {t === "img" ? "Image" : t === "quote" ? "Quote" : "Note"}
             </button>
@@ -137,7 +124,7 @@ function AddItemModal({
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={type === "quote" ? "Quote text…" : "Note text…"}
-            className="w-full resize-none rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted focus:border-neutral-400"
+            style={{ width: "100%", resize: "none", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
           />
         )}
 
@@ -147,7 +134,7 @@ function AddItemModal({
             value={source}
             onChange={(e) => setSource(e.target.value)}
             placeholder="Source (optional)"
-            className="mt-2 w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted focus:border-neutral-400"
+            style={{ marginTop: 8, width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
           />
         )}
 
@@ -159,43 +146,23 @@ function AddItemModal({
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="Image URL (optional)"
-              className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted focus:border-neutral-400"
+              style={{ width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
             />
             <input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Label / caption"
-              className="mt-2 w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted focus:border-neutral-400"
+              style={{ marginTop: 8, width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
             />
           </>
         )}
 
-        <label className="mt-3 flex items-center gap-2 text-sm text-muted">
-          Width
-          <input
-            type="range"
-            min={120}
-            max={400}
-            value={w}
-            onChange={(e) => setW(Number(e.target.value))}
-            className="flex-1 accent-neutral-700"
-          />
-          <span className="w-10 text-right text-xs">{w}px</span>
-        </label>
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-hover hover:text-foreground"
-          >
+        <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" onClick={onClose} style={{ padding: "8px 12px", fontFamily: ARIAL, fontSize: 13, color: "#8a8783", background: "none", border: "none", cursor: "pointer" }}>
             Cancel
           </button>
-          <button
-            type="submit"
-            className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700"
-          >
+          <button type="submit" style={{ padding: "8px 16px", fontFamily: ARIAL, fontWeight: 700, fontSize: 13, color: "#fff", background: BLUE, border: "none", cursor: "pointer" }}>
             Add
           </button>
         </div>
@@ -204,44 +171,26 @@ function AddItemModal({
   );
 }
 
-// ── Edit modal ─────────────────────────────────────────────────────────────
+// ── edit modal ────────────────────────────────────────────────────────────────
 
-function EditItemModal({
-  item,
-  onClose,
-  onSave,
-  onDelete,
-}: {
-  item: ScrapItemRow;
-  onClose: () => void;
-  onSave: (patch: Partial<ScrapItemRow>) => void;
-  onDelete: () => void;
-}) {
+function EditItemModal({ item, onClose, onSave, onDelete }: { item: ScrapItemRow; onClose: () => void; onSave: (patch: Partial<ScrapItemRow>) => void; onDelete: () => void }) {
   const [text, setText] = useState(item.text ?? "");
   const [source, setSource] = useState(item.source ?? "");
   const [label, setLabel] = useState(item.label ?? "");
   const [url, setUrl] = useState(item.url ?? "");
-  const [rot, setRot] = useState(item.rot ?? 0);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (item.type === "note") onSave({ text: text.trim() });
     else if (item.type === "quote") onSave({ text: text.trim(), source: source.trim() || null });
-    else onSave({ label: label.trim() || null, url: url.trim() || null, rot: rot || null });
+    else onSave({ label: label.trim() || null, url: url.trim() || null });
     onClose();
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/25 p-4 pt-24"
-      onClick={onClose}
-    >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-        className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-xl"
-      >
-        <h2 className="mb-4 text-base font-semibold text-foreground capitalize">Edit {item.type}</h2>
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "flex-start", justifyContent: "center", background: "rgba(0,0,0,0.25)", padding: 16, paddingTop: 96 }} onClick={onClose}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "100%", maxWidth: 420, background: "#fff", padding: 24, fontFamily: ARIAL }}>
+        <h2 style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 15, color: "#222", margin: "0 0 16px", textTransform: "capitalize" }}>Edit {item.type}</h2>
 
         {(item.type === "note" || item.type === "quote") && (
           <textarea
@@ -249,7 +198,7 @@ function EditItemModal({
             rows={4}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className="w-full resize-none rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-neutral-400"
+            style={{ width: "100%", resize: "none", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
           />
         )}
 
@@ -259,7 +208,7 @@ function EditItemModal({
             value={source}
             onChange={(e) => setSource(e.target.value)}
             placeholder="Source"
-            className="mt-2 w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-neutral-400"
+            style={{ marginTop: 8, width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
           />
         )}
 
@@ -271,51 +220,27 @@ function EditItemModal({
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="Image URL"
-              className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-neutral-400"
+              style={{ width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
             />
             <input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Label / caption"
-              className="mt-2 w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-neutral-400"
+              style={{ marginTop: 8, width: "100%", border: "1px solid #e2e2e2", padding: "8px 10px", fontFamily: ARIAL, fontSize: 13, color: "#222", outline: "none" }}
             />
           </>
         )}
 
-        <label className="mt-3 flex items-center gap-2 text-sm text-muted">
-          Rotation
-          <input
-            type="range"
-            min={-15}
-            max={15}
-            value={rot}
-            onChange={(e) => setRot(Number(e.target.value))}
-            className="flex-1 accent-neutral-700"
-          />
-          <span className="w-12 text-right text-xs">{rot}°</span>
-        </label>
-
-        <div className="mt-5 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => { onDelete(); onClose(); }}
-            className="rounded-md px-3 py-2 text-sm text-accent transition-colors hover:bg-hover"
-          >
+        <div style={{ marginTop: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <button type="button" onClick={() => { onDelete(); onClose(); }} style={{ padding: "8px 12px", fontFamily: ARIAL, fontSize: 13, color: "#b23a2e", background: "none", border: "none", cursor: "pointer" }}>
             Delete
           </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-hover"
-            >
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={onClose} style={{ padding: "8px 12px", fontFamily: ARIAL, fontSize: 13, color: "#8a8783", background: "none", border: "none", cursor: "pointer" }}>
               Cancel
             </button>
-            <button
-              type="submit"
-              className="rounded-md bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700"
-            >
+            <button type="submit" style={{ padding: "8px 16px", fontFamily: ARIAL, fontWeight: 700, fontSize: 13, color: "#fff", background: BLUE, border: "none", cursor: "pointer" }}>
               Save
             </button>
           </div>
@@ -325,7 +250,7 @@ function EditItemModal({
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────
+// ── page ──────────────────────────────────────────────────────────────────────
 
 export default function ScrapbookPage() {
   const { session } = useAuth();
@@ -339,39 +264,20 @@ export default function ScrapbookPage() {
   );
 
   const [items, setItems] = useState<ScrapItemRow[]>([]);
-  const [configured, setConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
-
-  const [scale, setScale] = useState(0.85);
-  const [tx, setTx] = useState(0);
-  const [ty, setTy] = useState(0);
-
-  const [drag, setDrag] = useState<DragState | null>(null);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
   const [showAdd, setShowAdd] = useState(false);
   const [editItem, setEditItem] = useState<ScrapItemRow | null>(null);
-
-  const viewportRef = useRef<HTMLDivElement>(null);
-
-  // ── Load items ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false;
     fetch("/api/scrapbook", { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d: { items?: ScrapItemRow[]; configured?: boolean }) => {
+      .then((d: { items?: ScrapItemRow[] }) => {
         if (cancelled) return;
         setItems(d.items ?? []);
-        setConfigured(d.configured ?? true);
       })
-      .catch(() => {
-        if (cancelled) return;
-        // Surface the seed-like fallback when Supabase isn't set up yet.
-        setItems([
-          { id: "s1", type: "img", x: 28, y: 28, w: 184, h: 138, label: "Add your first image →" },
-          { id: "s2", type: "quote", x: 28, y: 182, w: 220, text: "You do not rise to the level of your goals. You fall to the level of your systems.", source: "James Clear" },
-          { id: "s3", type: "note", x: 280, y: 40, w: 180, text: "Set up Supabase to save items permanently." },
-        ]);
-      })
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -379,101 +285,6 @@ export default function ScrapbookPage() {
       cancelled = true;
     };
   }, [authHeaders]);
-
-  // ── Mouse events for pan + item drag ───────────────────────────────────
-
-  const handleViewportMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
-      setDrag({
-        kind: "pan",
-        startMx: e.clientX,
-        startMy: e.clientY,
-        startTx: tx,
-        startTy: ty,
-      });
-    },
-    [tx, ty],
-  );
-
-  const handleItemMouseDown = useCallback(
-    (e: React.MouseEvent, item: ScrapItemRow) => {
-      e.stopPropagation();
-      if (e.button !== 0) return;
-      setDrag({
-        kind: "item",
-        id: item.id,
-        startMx: e.clientX,
-        startMy: e.clientY,
-        startX: item.x,
-        startY: item.y,
-      });
-    },
-    [],
-  );
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (!drag) return;
-      const dx = e.clientX - drag.startMx;
-      const dy = e.clientY - drag.startMy;
-      if (drag.kind === "pan") {
-        setTx(drag.startTx + dx);
-        setTy(drag.startTy + dy);
-      } else {
-        setItems((prev) =>
-          prev.map((it) =>
-            it.id === drag.id
-              ? { ...it, x: drag.startX + dx / scale, y: drag.startY + dy / scale }
-              : it,
-          ),
-        );
-      }
-    },
-    [drag, scale],
-  );
-
-  const handleMouseUp = useCallback(
-    (_e: React.MouseEvent) => {
-      if (drag?.kind === "item") {
-        const item = items.find((i) => i.id === drag.id);
-        if (item) {
-          fetch(`/api/scrapbook/${encodeURIComponent(item.id)}`, {
-            method: "PATCH",
-            headers: authHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify({ x: Math.round(item.x), y: Math.round(item.y) }),
-          }).catch(console.error);
-        }
-      }
-      setDrag(null);
-    },
-    [drag, items, authHeaders],
-  );
-
-  // Zoom toward a point (in viewport coords) keeping that point stationary, so
-  // the canvas grows/shrinks under the cursor instead of jumping to a corner.
-  const zoomAt = useCallback((factor: number, px: number, py: number) => {
-    setScale((prevScale) => {
-      const next = clamp(prevScale * factor, MIN_SCALE, MAX_SCALE);
-      if (next === prevScale) return prevScale;
-      const ratio = next / prevScale;
-      setTx((prevTx) => px - (px - prevTx) * ratio);
-      setTy((prevTy) => py - (py - prevTy) * ratio);
-      return next;
-    });
-  }, []);
-
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const rect = viewportRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    // Exponential factor => smooth, velocity-sensitive zoom (trackpad pinch and
-    // wheel both feel natural); anchored at the cursor.
-    const factor = Math.exp(-e.deltaY * 0.0018);
-    zoomAt(factor, e.clientX - rect.left, e.clientY - rect.top);
-  }, [zoomAt]);
-
-  // ── CRUD helpers ───────────────────────────────────────────────────────
 
   const addItem = useCallback(
     async (body: Omit<ScrapItemRow, "id">) => {
@@ -483,12 +294,10 @@ export default function ScrapbookPage() {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        const { item } = await res.json() as { item: ScrapItemRow };
+        const { item } = (await res.json()) as { item: ScrapItemRow };
         setItems((prev) => [...prev, item]);
       } else {
-        // Optimistic for offline / unconfigured mode.
-        const id = `local_${Date.now()}`;
-        setItems((prev) => [...prev, { ...body, id }]);
+        setItems((prev) => [...prev, { ...body, id: `local_${Date.now()}` }]);
       }
     },
     [authHeaders],
@@ -506,116 +315,93 @@ export default function ScrapbookPage() {
     [authHeaders],
   );
 
-  const deleteItem = useCallback(async (id: string) => {
-    setItems((prev) => prev.filter((it) => it.id !== id));
-    await fetch(`/api/scrapbook/${encodeURIComponent(id)}`, { method: "DELETE", headers: authHeaders() }).catch(console.error);
-  }, [authHeaders]);
+  const deleteItem = useCallback(
+    async (id: string) => {
+      setItems((prev) => prev.filter((it) => it.id !== id));
+      await fetch(`/api/scrapbook/${encodeURIComponent(id)}`, { method: "DELETE", headers: authHeaders() }).catch(console.error);
+    },
+    [authHeaders],
+  );
 
-  // +/- buttons zoom toward the centre of the viewport.
-  const zoomBy = (factor: number) => {
-    const rect = viewportRef.current?.getBoundingClientRect();
-    zoomAt(factor, rect ? rect.width / 2 : 0, rect ? rect.height / 2 : 0);
-  };
-  const fitView = () => { setScale(0.85); setTx(0); setTy(0); };
+  function toggleFilter(f: string) {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      return next;
+    });
+  }
 
-  const isDraggingItem = drag?.kind === "item";
-  const isDraggingPan = drag?.kind === "pan";
+  const visibleItems =
+    activeFilters.size === 0
+      ? items
+      : items.filter((it) => [...activeFilters].some((f) => FILTER_TYPE[f as (typeof FILTERS)[number]] === it.type));
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#fff", fontFamily: ARIAL }}>
+      <ScrapbookSidebar />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-3">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">Scrapbook</h1>
-            <p className="text-[11px] uppercase tracking-wider text-muted">Things I love</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {!configured && (
-              <span className="text-xs text-muted">
-                Set up Supabase to save permanently.
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "20px 60px 16px", borderBottom: "1px solid #e2e2e2" }}>
+          <h1 style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 17, letterSpacing: "0.04em", color: BLUE, margin: 0 }}>
+            SCRAPBOOK — THINGS I LOVE
+          </h1>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth={2}>
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+        </div>
+
+        <div style={{ flex: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid #e2e2e2" }}>
+          <p style={{ fontFamily: ARIAL, fontSize: 12.5, color: "#222", margin: 0 }}>
+            Collected · {items.length} item{items.length === 1 ? "" : "s"}
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {FILTERS.map((f) => (
+              <span
+                key={f}
+                onClick={() => toggleFilter(f)}
+                style={{
+                  fontFamily: ARIAL,
+                  fontSize: 11.5,
+                  color: activeFilters.has(f) ? "#fff" : BLUE,
+                  background: activeFilters.has(f) ? BLUE : "transparent",
+                  border: `1px solid ${BLUE}`,
+                  padding: "5px 9px",
+                  cursor: "pointer",
+                }}
+              >
+                {f}
               </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowAdd(true)}
-              className="rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-neutral-700"
-            >
+            ))}
+            <span onClick={() => setShowAdd(true)} style={{ fontFamily: ARIAL, fontWeight: 700, fontSize: 11.5, color: "#fff", background: BLUE, padding: "5px 11px", cursor: "pointer" }}>
               + Add
-            </button>
-            {/* Zoom controls */}
-            <div className="flex items-center rounded-full border border-border px-1 py-1 gap-1">
-              <button type="button" onClick={() => zoomBy(0.8)} className="flex h-6 w-6 items-center justify-center rounded-full text-sm text-foreground transition-colors hover:bg-hover">−</button>
-              <button type="button" onClick={fitView} className="px-1.5 text-[9px] font-medium uppercase tracking-wide text-muted transition-colors hover:text-foreground">FIT</button>
-              <button type="button" onClick={() => zoomBy(1.25)} className="flex h-6 w-6 items-center justify-center rounded-full text-sm text-foreground transition-colors hover:bg-hover">+</button>
-            </div>
+            </span>
           </div>
         </div>
 
-        {/* Canvas viewport */}
-        <div
-          ref={viewportRef}
-          className="relative flex-1 overflow-hidden bg-[#f7f5f1]"
-          style={{ cursor: isDraggingPan ? "grabbing" : isDraggingItem ? "move" : "grab" }}
-          onMouseDown={handleViewportMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
-        >
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-neutral-400" />
+        <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}>
+          {loading ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+              <div className="animate-spin" style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid #e2e2e2", borderTopColor: BLUE }} />
             </div>
-          )}
-
-          {/* Infinite canvas */}
-          <div
-            style={{
-              transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
-              transformOrigin: "0 0",
-              width: CANVAS_W,
-              height: CANVAS_H,
-              position: "relative",
-              willChange: "transform",
-            }}
-          >
-            {items.map((item) => (
-              <div
-                key={item.id}
-                onMouseDown={(e) => handleItemMouseDown(e, item)}
-                onDoubleClick={(e) => { e.stopPropagation(); setEditItem(item); }}
-                style={{
-                  position: "absolute",
-                  left: item.x,
-                  top: item.y,
-                  transform: item.rot ? `rotate(${item.rot}deg)` : undefined,
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-                title="Drag to move · Double-click to edit"
-              >
-                {item.type === "img" && <ScrapImage item={item as ScrapItemRow & { type: "img" }} />}
-                {item.type === "quote" && <ScrapQuote item={item as ScrapItemRow & { type: "quote" }} />}
-                {item.type === "note" && <ScrapNote item={item as ScrapItemRow & { type: "note" }} />}
-              </div>
-            ))}
-          </div>
-
-          {items.length === 0 && !loading && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <p className="text-sm text-muted">Your scrapbook is empty — click + Add to begin.</p>
+          ) : visibleItems.length === 0 ? (
+            <p style={{ fontFamily: ARIAL, fontSize: 13, color: "#8a8783", textAlign: "center", marginTop: 60 }}>
+              {items.length === 0 ? "Your scrapbook is empty — click + Add to begin." : "No items match this filter."}
+            </p>
+          ) : (
+            <div style={{ columns: "3 140px", columnGap: 16 }}>
+              {visibleItems.map((item) => (
+                <div key={item.id} style={{ breakInside: "avoid", marginBottom: 20, width: "100%" }}>
+                  <ItemCard item={item} onClick={() => setEditItem(item)} />
+                </div>
+              ))}
             </div>
           )}
         </div>
       </div>
 
-      {showAdd && (
-        <AddItemModal onClose={() => setShowAdd(false)} onAdd={addItem} />
-      )}
-
+      {showAdd && <AddItemModal onClose={() => setShowAdd(false)} onAdd={addItem} />}
       {editItem && (
         <EditItemModal
           item={editItem}
