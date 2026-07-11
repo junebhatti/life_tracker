@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useAppState } from "../state/AppState";
 import { URDU_CARDS, URDU_CATEGORIES, type UrduCard } from "../data/urduCards";
+import { cardKeyFor, isDue, SESSION_GAP, type Grade, type ReviewState } from "../lib/srs";
 
 const URDU_FONT = "NotoNastaliqUrdu_400Regular";
 const SERIF = "Times New Roman";
-
-const STORAGE_KEY = "urdu_mastered";
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -28,114 +28,85 @@ function requeueDeck<T>(deck: T[], index: number, gap: number): { deck: T[]; ind
   return { deck: rest, index: nextIndex };
 }
 
-function loadMastered(): Set<string> {
-  try {
-    if (typeof localStorage === "undefined") return new Set();
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function persistMastered(next: Set<string>) {
-  try {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
-  } catch {
-    // ignore
-  }
-}
-
-function buildDeck(cat: string, mastered: Set<string>): UrduCard[] {
+function buildDeck(cat: string, reviews: Record<string, ReviewState>): UrduCard[] {
   const base = cat === "All" ? URDU_CARDS : URDU_CARDS.filter((c) => c.cat === cat);
-  return base.filter((c) => !mastered.has(c.id));
+  return base.filter((c) => isDue(reviews[cardKeyFor("urdu", c.id)]));
 }
 
 export default function FlashcardsScreen() {
+  const { flashcardReviews, flashcardReviewsLoaded, recordFlashcardGrade, resetFlashcardDeck } = useAppState();
   const [cat, setCat] = useState("All");
   const [catMenuOpen, setCatMenuOpen] = useState(false);
-  const [mastered, setMastered] = useState<Set<string>>(() => loadMastered());
-  const [ds, setDs] = useState<{ deck: UrduCard[]; index: number; flipped: boolean }>(() => ({
-    deck: buildDeck("All", loadMastered()),
-    index: 0,
-    flipped: false,
-  }));
+  const [ds, setDs] = useState<{ deck: UrduCard[]; index: number; flipped: boolean } | null>(null);
+
+  // Seed the session deck from what's due, once reviews have loaded.
+  if (ds === null && flashcardReviewsLoaded) {
+    setDs({ deck: buildDeck("All", flashcardReviews), index: 0, flipped: false });
+  }
+
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
   const [sessFeelingGood, setSessFeelingGood] = useState(0);
+  const [sessMastered, setSessMastered] = useState(0);
 
-  const total = ds.deck.length;
-  const card = total ? ds.deck[ds.index] : null;
-  const progressPct = total === 0 ? 100 : Math.round((ds.index / Math.max(1, total)) * 100);
+  const total = ds ? ds.deck.length : 0;
+  const card = ds && total ? ds.deck[ds.index] : null;
+  const progressPct = total === 0 ? 100 : Math.round(((ds?.index ?? 0) / Math.max(1, total)) * 100);
 
   function selectCat(c: string) {
     setCat(c);
-    setDs({ deck: buildDeck(c, mastered), index: 0, flipped: false });
+    setDs({ deck: buildDeck(c, flashcardReviews), index: 0, flipped: false });
     setCatMenuOpen(false);
   }
 
   function flip() {
-    setDs((s) => ({ ...s, flipped: !s.flipped }));
+    setDs((s) => (s ? { ...s, flipped: !s.flipped } : s));
   }
 
   function prev() {
     setDs((s) => {
-      if (!s.deck.length) return s;
+      if (!s || !s.deck.length) return s;
       const n = Math.max(1, s.deck.length);
       return { ...s, index: (s.index - 1 + n) % n, flipped: false };
     });
   }
 
-  function requeue(gap: number) {
+  function grade(g: Grade) {
+    if (!ds || !ds.deck.length) return;
+    const c = ds.deck[ds.index];
+    recordFlashcardGrade("urdu", c.id, g);
+    const gap = SESSION_GAP[g];
     setDs((s) => {
+      if (!s) return s;
+      if (gap === null) {
+        const deck = [...s.deck.slice(0, s.index), ...s.deck.slice(s.index + 1)];
+        return { deck, index: Math.min(s.index, Math.max(0, deck.length - 1)), flipped: false };
+      }
       const { deck, index } = requeueDeck(s.deck, s.index, gap);
       return { deck, index, flipped: false };
     });
   }
 
-  function noIdea() {
-    setSessNoIdea((n) => n + 1);
-    requeue(2);
-  }
-
-  function needsWork() {
-    setSessNeedsWork((n) => n + 1);
-    requeue(6);
-  }
-
-  function feelingGood() {
-    setSessFeelingGood((n) => n + 1);
-    requeue(14);
-  }
-
-  function markMastered() {
-    if (!ds.deck.length) return;
-    const c = ds.deck[ds.index];
-    const nextMastered = new Set(mastered);
-    nextMastered.add(c.id);
-    persistMastered(nextMastered);
-    setMastered(nextMastered);
-    const deck = buildDeck(cat, nextMastered);
-    setDs({ deck, index: Math.min(ds.index, Math.max(0, deck.length - 1)), flipped: false });
-  }
+  function noIdea() { setSessNoIdea((n) => n + 1); grade("no_idea"); }
+  function needsWork() { setSessNeedsWork((n) => n + 1); grade("needs_work"); }
+  function feelingGood() { setSessFeelingGood((n) => n + 1); grade("feeling_good"); }
+  function markMastered() { setSessMastered((n) => n + 1); grade("mastered"); }
 
   function doShuffle() {
-    setDs((s) => ({ deck: shuffle(s.deck), index: 0, flipped: false }));
+    setDs((s) => (s ? { deck: shuffle(s.deck), index: 0, flipped: false } : s));
   }
 
   function doReset() {
-    const empty = new Set<string>();
-    persistMastered(empty);
-    setMastered(empty);
-    setDs({ deck: buildDeck(cat, empty), index: 0, flipped: false });
+    resetFlashcardDeck("urdu");
+    setDs({ deck: cat === "All" ? [...URDU_CARDS] : URDU_CARDS.filter((c) => c.cat === cat), index: 0, flipped: false });
   }
+
 
   return (
     <View>
       <View style={styles.headerRow}>
         <Text style={styles.h1}>Urdu</Text>
-        <Text style={styles.remaining}>{total} remaining</Text>
+        <Text style={styles.remaining}>{total} due</Text>
       </View>
 
       <View style={styles.catWrap}>
@@ -158,13 +129,15 @@ export default function FlashcardsScreen() {
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
       </View>
-      <Text style={styles.masteredLabel}>{mastered.size} mastered</Text>
+      <Text style={styles.masteredLabel}>
+        {flashcardReviewsLoaded ? (total ? "reviewing what's due" : "nothing due right now") : "Loading…"}
+      </Text>
 
       <Pressable onPress={flip} style={styles.scene}>
         <View
           style={[
             styles.cardInner,
-            { transform: [{ perspective: 900 }, { rotateY: ds.flipped ? "180deg" : "0deg" }] },
+            { transform: [{ perspective: 900 }, { rotateY: ds?.flipped ? "180deg" : "0deg" }] },
             // RN's ViewStyle type doesn't know about transform-style, but this app
             // only ever runs via react-native-web, which passes it straight to CSS —
             // without it, backface-visibility can't hide the reverse face on flip.
@@ -183,7 +156,7 @@ export default function FlashcardsScreen() {
         </View>
       </Pressable>
 
-      <Text style={styles.position}>{total ? `${ds.index + 1} / ${total}` : "All mastered!"}</Text>
+      <Text style={styles.position}>{total ? `${(ds?.index ?? 0) + 1} / ${total}` : "All caught up!"}</Text>
 
       <View style={styles.controls}>
         <Pressable onPress={prev} hitSlop={8}>
@@ -230,7 +203,7 @@ export default function FlashcardsScreen() {
           <Text style={styles.statLabel}>feeling good</Text>
         </View>
         <View style={styles.statCol}>
-          <Text style={[styles.statNum, { color: "#3d6b57" }]}>{mastered.size}</Text>
+          <Text style={[styles.statNum, { color: "#3d6b57" }]}>{sessMastered}</Text>
           <Text style={styles.statLabel}>mastered</Text>
         </View>
       </View>

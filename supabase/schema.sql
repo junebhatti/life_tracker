@@ -205,6 +205,36 @@ create policy "vocab_words_insert_own" on public.vocab_words for insert with che
 create policy "vocab_words_update_own" on public.vocab_words for update using (auth.uid() = user_id);
 create policy "vocab_words_delete_own" on public.vocab_words for delete using (auth.uid() = user_id);
 
+-- Spaced-repetition schedule, one row per flashcard the user has graded.
+-- Covers both decks via a namespaced card_key ("english:<wordId>" /
+-- "urdu:<cardId>"); a card with no row here has never been reviewed and is
+-- treated as due. due_at drives which cards surface each session, interval_days
+-- is the current spacing that each grade grows or resets. Composite PK so an
+-- upsert on (user_id, card_key) updates the schedule in place.
+create table if not exists public.flashcard_reviews (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  deck text not null,
+  card_key text not null,
+  interval_days numeric not null default 0,
+  due_at timestamptz not null default now(),
+  last_grade text,
+  reps integer not null default 0,
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  primary key (user_id, card_key)
+);
+create index if not exists flashcard_reviews_user_due_idx on public.flashcard_reviews (user_id, deck, due_at);
+alter table public.flashcard_reviews enable row level security;
+
+drop policy if exists "flashcard_reviews_select_own" on public.flashcard_reviews;
+drop policy if exists "flashcard_reviews_insert_own" on public.flashcard_reviews;
+drop policy if exists "flashcard_reviews_update_own" on public.flashcard_reviews;
+drop policy if exists "flashcard_reviews_delete_own" on public.flashcard_reviews;
+create policy "flashcard_reviews_select_own" on public.flashcard_reviews for select using (auth.uid() = user_id);
+create policy "flashcard_reviews_insert_own" on public.flashcard_reviews for insert with check (auth.uid() = user_id);
+create policy "flashcard_reviews_update_own" on public.flashcard_reviews for update using (auth.uid() = user_id);
+create policy "flashcard_reviews_delete_own" on public.flashcard_reviews for delete using (auth.uid() = user_id);
+
 -- Water intake, logged directly from the app (not sourced from Fitbit/Google
 -- Health) — one row per log entry so a day's total is the sum of amount_ml
 -- for that civil day. Canonical unit is milliliters (the target is framed in

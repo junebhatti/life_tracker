@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Noto_Nastaliq_Urdu } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
+import { useAuth } from "@/components/AuthProvider";
 import { useVocab } from "@/components/VocabStore";
+import { supabase } from "@/lib/supabase";
 import { definedWords, sortWordsAlphabetically } from "@/lib/vocab";
 import { URDU_CARDS, URDU_CATEGORIES, type UrduCard } from "@/lib/urduCards";
+import { cardKeyFor, isDue, nextReview, SESSION_GAP, type Grade, type ReviewState } from "@/lib/srs";
 
 const nastaliq = Noto_Nastaliq_Urdu({ subsets: ["arabic"], weight: ["400"] });
 
@@ -210,109 +213,173 @@ const cardFace: React.CSSProperties = {
   border: "1px solid #d6daf0",
 };
 
+// ── review store (spaced repetition, persisted to Supabase) ──────────────────
+
+type ReviewMap = Map<string, ReviewState>;
+
+/** Loads this deck's review schedule once, and persists grades/resets. Because
+ *  each deck component mounts fresh when chosen, the session deck is a snapshot
+ *  of what's due at that moment. */
+function useFlashcardReviews(deck: "english" | "urdu") {
+  const { user } = useAuth();
+  const [reviews, setReviews] = useState<ReviewMap>(new Map());
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setReviews(new Map());
+      setHydrated(true);
+      return;
+    }
+    let active = true;
+    setHydrated(false);
+    supabase
+      .from("flashcard_reviews")
+      .select("card_key, interval_days, due_at, reps")
+      .eq("user_id", user.id)
+      .eq("deck", deck)
+      .then(({ data }) => {
+        if (!active) return;
+        const map: ReviewMap = new Map();
+        for (const r of (data ?? []) as { card_key: string; interval_days: number; due_at: string; reps: number }[]) {
+          map.set(r.card_key, { intervalDays: Number(r.interval_days), dueAt: r.due_at, reps: r.reps });
+        }
+        setReviews(map);
+        setHydrated(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user, deck]);
+
+  const recordGrade = useCallback(
+    (cardId: string, grade: Grade) => {
+      const key = cardKeyFor(deck, cardId);
+      // Compute the next schedule from the current map here, not inside the
+      // setState updater — React may run the updater later, after we'd already
+      // need the value to persist.
+      const nextState = nextReview(reviews.get(key), grade);
+      setReviews((prev) => {
+        const map = new Map(prev);
+        map.set(key, nextState);
+        return map;
+      });
+      if (user) {
+        supabase
+          .from("flashcard_reviews")
+          .upsert(
+            {
+              user_id: user.id,
+              deck,
+              card_key: key,
+              interval_days: nextState.intervalDays,
+              due_at: nextState.dueAt,
+              last_grade: grade,
+              reps: nextState.reps,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,card_key" },
+          )
+          .then(({ error }) => {
+            if (error) console.error("Failed to save flashcard review", error);
+          });
+      }
+    },
+    [user, deck, reviews],
+  );
+
+  const resetDeck = useCallback(() => {
+    setReviews(new Map());
+    if (user) {
+      supabase
+        .from("flashcard_reviews")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("deck", deck)
+        .then(({ error }) => {
+          if (error) console.error("Failed to reset flashcard schedule", error);
+        });
+    }
+  }, [user, deck]);
+
+  return { reviews, hydrated, recordGrade, resetDeck };
+}
+
 // ── Urdu deck ─────────────────────────────────────────────────────────────────
 
-const URDU_STORAGE_KEY = "urdu_mastered";
-
-function loadMastered(key: string): Set<string> {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function persistMastered(key: string, next: Set<string>) {
-  try {
-    localStorage.setItem(key, JSON.stringify([...next]));
-  } catch {
-    // ignore
-  }
-}
-
-function buildUrduDeck(cat: string, mastered: Set<string>): UrduCard[] {
+function buildUrduDeck(cat: string, reviews: ReviewMap): UrduCard[] {
   const base = cat === "All" ? URDU_CARDS : URDU_CARDS.filter((c) => c.cat === cat);
-  return base.filter((c) => !mastered.has(c.id));
+  return base.filter((c) => isDue(reviews.get(cardKeyFor("urdu", c.id))));
 }
 
 function UrduDeck({ onBack }: { onBack: () => void }) {
+  const { reviews, hydrated, recordGrade, resetDeck } = useFlashcardReviews("urdu");
   const [cat, setCat] = useState("All");
   const [catMenuOpen, setCatMenuOpen] = useState(false);
-  const [mastered, setMastered] = useState<Set<string>>(() => loadMastered(URDU_STORAGE_KEY));
-  const [ds, setDs] = useState<{ deck: UrduCard[]; index: number; flipped: boolean }>(() => ({
-    deck: buildUrduDeck("All", loadMastered(URDU_STORAGE_KEY)),
-    index: 0,
-    flipped: false,
-  }));
+  const [ds, setDs] = useState<{ deck: UrduCard[]; index: number; flipped: boolean } | null>(null);
+
+  // Seed the session deck from what's due the first time reviews have loaded.
+  if (ds === null && hydrated) {
+    setDs({ deck: buildUrduDeck("All", reviews), index: 0, flipped: false });
+  }
+
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
   const [sessFeelingGood, setSessFeelingGood] = useState(0);
+  const [sessMastered, setSessMastered] = useState(0);
 
-  const total = ds.deck.length;
-  const card = total ? ds.deck[ds.index] : null;
-  const progressPct = total === 0 ? 100 : Math.round((ds.index / Math.max(1, total)) * 100);
+  const total = ds ? ds.deck.length : 0;
+  const card = ds && total ? ds.deck[ds.index] : null;
+  const progressPct = total === 0 ? 100 : Math.round(((ds?.index ?? 0) / Math.max(1, total)) * 100);
 
   function selectCat(c: string) {
     setCat(c);
-    setDs({ deck: buildUrduDeck(c, mastered), index: 0, flipped: false });
+    setDs({ deck: buildUrduDeck(c, reviews), index: 0, flipped: false });
     setCatMenuOpen(false);
   }
 
   function flip() {
-    setDs((s) => ({ ...s, flipped: !s.flipped }));
+    setDs((s) => (s ? { ...s, flipped: !s.flipped } : s));
   }
 
   function prev() {
     setDs((s) => {
-      if (!s.deck.length) return s;
+      if (!s || !s.deck.length) return s;
       const n = Math.max(1, s.deck.length);
       return { ...s, index: (s.index - 1 + n) % n, flipped: false };
     });
   }
 
-  function requeue(gap: number) {
+  function grade(g: Grade) {
+    if (!ds || !ds.deck.length) return;
+    const c = ds.deck[ds.index];
+    recordGrade(c.id, g);
+    const gap = SESSION_GAP[g];
     setDs((s) => {
+      if (!s) return s;
+      if (gap === null) {
+        // leaves the session — splice it out and clamp the index
+        const deck = [...s.deck.slice(0, s.index), ...s.deck.slice(s.index + 1)];
+        return { deck, index: Math.min(s.index, Math.max(0, deck.length - 1)), flipped: false };
+      }
       const { deck, index } = requeueDeck(s.deck, s.index, gap);
       return { deck, index, flipped: false };
     });
   }
 
-  function noIdea() {
-    setSessNoIdea((n) => n + 1);
-    requeue(2);
-  }
-
-  function needsWork() {
-    setSessNeedsWork((n) => n + 1);
-    requeue(6);
-  }
-
-  function feelingGood() {
-    setSessFeelingGood((n) => n + 1);
-    requeue(14);
-  }
-
-  function markMastered() {
-    if (!ds.deck.length) return;
-    const c = ds.deck[ds.index];
-    const nextMastered = new Set(mastered);
-    nextMastered.add(c.id);
-    persistMastered(URDU_STORAGE_KEY, nextMastered);
-    setMastered(nextMastered);
-    const deck = buildUrduDeck(cat, nextMastered);
-    setDs({ deck, index: Math.min(ds.index, Math.max(0, deck.length - 1)), flipped: false });
-  }
+  function noIdea() { setSessNoIdea((n) => n + 1); grade("no_idea"); }
+  function needsWork() { setSessNeedsWork((n) => n + 1); grade("needs_work"); }
+  function feelingGood() { setSessFeelingGood((n) => n + 1); grade("feeling_good"); }
+  function markMastered() { setSessMastered((n) => n + 1); grade("mastered"); }
 
   function doShuffle() {
-    setDs((s) => ({ deck: shuffleArr(s.deck), index: 0, flipped: false }));
+    setDs((s) => (s ? { deck: shuffleArr(s.deck), index: 0, flipped: false } : s));
   }
 
   function doReset() {
-    const empty = new Set<string>();
-    persistMastered(URDU_STORAGE_KEY, empty);
-    setMastered(empty);
-    setDs({ deck: buildUrduDeck(cat, empty), index: 0, flipped: false });
+    resetDeck();
+    setDs({ deck: cat === "All" ? [...URDU_CARDS] : URDU_CARDS.filter((c) => c.cat === cat), index: 0, flipped: false });
   }
 
   return (
@@ -321,7 +388,7 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 0" }}>
         <h1 style={{ fontFamily: SERIF, fontSize: 27, lineHeight: 1, color: "#2f2f2f", margin: 0, letterSpacing: "-0.01em" }}>Urdu</h1>
-        <span style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", flex: "none" }}>{total} remaining</span>
+        <span style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", flex: "none" }}>{total} due</span>
       </div>
 
       <div style={{ marginTop: 20, marginBottom: 22, position: "relative" }}>
@@ -346,10 +413,12 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
       <div style={{ height: 1, background: "#e2dbd2", marginBottom: 4 }}>
         <div style={{ height: 1, background: "#2323e8", width: `${progressPct}%`, transition: "width .3s ease" }} />
       </div>
-      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", margin: "8px 0 26px" }}>{mastered.size} mastered</p>
+      <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", margin: "8px 0 26px" }}>
+        {hydrated ? (total ? "reviewing what's due" : "nothing due right now") : "Loading…"}
+      </p>
 
       <div style={cardScene} onClick={flip}>
-        <div style={{ width: "100%", height: "100%", position: "relative", transformStyle: "preserve-3d", transition: "transform .45s cubic-bezier(.4,0,.2,1)", transform: ds.flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}>
+        <div style={{ width: "100%", height: "100%", position: "relative", transformStyle: "preserve-3d", transition: "transform .45s cubic-bezier(.4,0,.2,1)", transform: ds?.flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}>
           <div style={cardFace}>
             <p className={nastaliq.className} dir="rtl" style={{ fontSize: 42, lineHeight: 1.4, color: "#2f2f2f", margin: 0, textAlign: "center", fontWeight: 400 }}>
               {card ? card.urdu : "—"}
@@ -367,36 +436,36 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
       </div>
 
       <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 13, color: "#b3aaa0", textAlign: "center", margin: "18px 0 0" }}>
-        {total ? `${ds.index + 1} / ${total}` : "All mastered!"}
+        {total ? `${(ds?.index ?? 0) + 1} / ${total}` : hydrated ? "All caught up!" : ""}
       </p>
 
       <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onFeelingGood={feelingGood} onMastered={markMastered} />
       <ShuffleReset onShuffle={doShuffle} onReset={doReset} />
-      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} feelingGood={sessFeelingGood} mastered={mastered.size} />
+      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} feelingGood={sessFeelingGood} mastered={sessMastered} />
     </>
   );
 }
 
 // ── English vocabulary deck ────────────────────────────────────────────────────
 
-const ENGLISH_STORAGE_KEY = "english_vocab_mastered";
-
 function EnglishDeck({ onBack }: { onBack: () => void }) {
-  const { words, hydrated } = useVocab();
+  const { words, hydrated: vocabHydrated } = useVocab();
+  const { reviews, hydrated: reviewsHydrated, recordGrade, resetDeck } = useFlashcardReviews("english");
   const quizzable = sortWordsAlphabetically(definedWords(words));
+  const ready = vocabHydrated && reviewsHydrated;
 
-  const [mastered, setMastered] = useState<Set<string>>(() => loadMastered(ENGLISH_STORAGE_KEY));
   const [ds, setDs] = useState<{ deck: typeof quizzable; index: number; flipped: boolean } | null>(null);
 
-  // quizzable only stabilizes once vocab has hydrated from Supabase, so seed
-  // the working deck the first time real data shows up.
-  if (ds === null && hydrated) {
-    setDs({ deck: quizzable.filter((w) => !mastered.has(w.id)), index: 0, flipped: false });
+  // Seed the session deck from words that are due, once both vocab and the
+  // review schedule have loaded.
+  if (ds === null && ready) {
+    setDs({ deck: quizzable.filter((w) => isDue(reviews.get(cardKeyFor("english", w.id)))), index: 0, flipped: false });
   }
 
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
   const [sessFeelingGood, setSessFeelingGood] = useState(0);
+  const [sessMastered, setSessMastered] = useState(0);
 
   const total = ds ? ds.deck.length : 0;
   const card = ds && total ? ds.deck[ds.index] : null;
@@ -415,49 +484,34 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
     });
   }
 
-  function requeue(gap: number) {
+  function grade(g: Grade) {
+    if (!ds || !ds.deck.length) return;
+    const w = ds.deck[ds.index];
+    recordGrade(w.id, g);
+    const gap = SESSION_GAP[g];
     setDs((s) => {
       if (!s) return s;
+      if (gap === null) {
+        const deck = [...s.deck.slice(0, s.index), ...s.deck.slice(s.index + 1)];
+        return { deck, index: Math.min(s.index, Math.max(0, deck.length - 1)), flipped: false };
+      }
       const { deck, index } = requeueDeck(s.deck, s.index, gap);
       return { deck, index, flipped: false };
     });
   }
 
-  function noIdea() {
-    setSessNoIdea((n) => n + 1);
-    requeue(2);
-  }
-
-  function needsWork() {
-    setSessNeedsWork((n) => n + 1);
-    requeue(6);
-  }
-
-  function feelingGood() {
-    setSessFeelingGood((n) => n + 1);
-    requeue(14);
-  }
-
-  function markMastered() {
-    if (!ds || !ds.deck.length) return;
-    const w = ds.deck[ds.index];
-    const nextMastered = new Set(mastered);
-    nextMastered.add(w.id);
-    persistMastered(ENGLISH_STORAGE_KEY, nextMastered);
-    setMastered(nextMastered);
-    const deck = quizzable.filter((x) => !nextMastered.has(x.id));
-    setDs({ deck, index: Math.min(ds.index, Math.max(0, deck.length - 1)), flipped: false });
-  }
+  function noIdea() { setSessNoIdea((n) => n + 1); grade("no_idea"); }
+  function needsWork() { setSessNeedsWork((n) => n + 1); grade("needs_work"); }
+  function feelingGood() { setSessFeelingGood((n) => n + 1); grade("feeling_good"); }
+  function markMastered() { setSessMastered((n) => n + 1); grade("mastered"); }
 
   function doShuffle() {
     setDs((s) => (s ? { deck: shuffleArr(s.deck), index: 0, flipped: false } : s));
   }
 
   function doReset() {
-    const empty = new Set<string>();
-    persistMastered(ENGLISH_STORAGE_KEY, empty);
-    setMastered(empty);
-    setDs({ deck: quizzable.filter((x) => !empty.has(x.id)), index: 0, flipped: false });
+    resetDeck();
+    setDs({ deck: quizzable, index: 0, flipped: false });
   }
 
   return (
@@ -466,14 +520,14 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 0" }}>
         <h1 style={{ fontFamily: SERIF, fontSize: 27, lineHeight: 1, color: "#2f2f2f", margin: 0, letterSpacing: "-0.01em" }}>English</h1>
-        <span style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", flex: "none" }}>{total} remaining</span>
+        <span style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", flex: "none" }}>{total} due</span>
       </div>
 
       <div style={{ height: 1, background: "#e2dbd2", marginTop: 20, marginBottom: 4 }}>
         <div style={{ height: 1, background: "#2323e8", width: `${progressPct}%`, transition: "width .3s ease" }} />
       </div>
       <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", margin: "8px 0 26px" }}>
-        {hydrated ? `${mastered.size} mastered` : "Loading…"}
+        {ready ? (total ? "reviewing what's due" : "nothing due right now") : "Loading…"}
         {undefinedCount > 0 && ` · ${undefinedCount} words need a definition first`}
       </p>
 
@@ -494,12 +548,12 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
       </div>
 
       <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 13, color: "#b3aaa0", textAlign: "center", margin: "18px 0 0" }}>
-        {total ? `${(ds?.index ?? 0) + 1} / ${total}` : total === 0 && quizzable.length === 0 ? "No words to study yet" : "All mastered!"}
+        {total ? `${(ds?.index ?? 0) + 1} / ${total}` : quizzable.length === 0 ? "No words to study yet" : "All caught up!"}
       </p>
 
       <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onFeelingGood={feelingGood} onMastered={markMastered} />
       <ShuffleReset onShuffle={doShuffle} onReset={doReset} />
-      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} feelingGood={sessFeelingGood} mastered={mastered.size} />
+      <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} feelingGood={sessFeelingGood} mastered={sessMastered} />
     </>
   );
 }

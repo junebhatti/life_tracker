@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppState } from "../state/AppState";
 import { definedWords, sortWordsAlphabetically } from "../lib/vocab";
+import { cardKeyFor, isDue, SESSION_GAP, type Grade } from "../lib/srs";
 import type { VocabWord } from "../types";
 
 const SERIF = "Times New Roman";
-const STORAGE_KEY = "english_vocab_mastered";
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -26,41 +26,22 @@ function requeueDeck<T>(deck: T[], index: number, gap: number): { deck: T[]; ind
   return { deck: rest, index: nextIndex };
 }
 
-function loadMastered(): Set<string> {
-  try {
-    if (typeof localStorage === "undefined") return new Set();
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function persistMastered(next: Set<string>) {
-  try {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
-  } catch {
-    // ignore
-  }
-}
-
 export default function EnglishFlashcardsScreen() {
-  const { vocabWords, loading } = useAppState();
+  const { vocabWords, loading, flashcardReviews, flashcardReviewsLoaded, recordFlashcardGrade, resetFlashcardDeck } = useAppState();
   const quizzable = sortWordsAlphabetically(definedWords(vocabWords));
+  const ready = !loading && flashcardReviewsLoaded;
 
-  const [mastered, setMastered] = useState<Set<string>>(() => loadMastered());
   const [ds, setDs] = useState<{ deck: VocabWord[]; index: number; flipped: boolean } | null>(null);
 
-  // vocabWords loads asynchronously from Supabase, so seed the working deck
-  // the first time real data has finished loading.
-  if (ds === null && !loading) {
-    setDs({ deck: quizzable.filter((w) => !mastered.has(w.id)), index: 0, flipped: false });
+  // Seed the session deck from words that are due, once vocab + reviews load.
+  if (ds === null && ready) {
+    setDs({ deck: quizzable.filter((w) => isDue(flashcardReviews[cardKeyFor("english", w.id)])), index: 0, flipped: false });
   }
 
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
   const [sessFeelingGood, setSessFeelingGood] = useState(0);
+  const [sessMastered, setSessMastered] = useState(0);
 
   const total = ds ? ds.deck.length : 0;
   const card = ds && total ? ds.deck[ds.index] : null;
@@ -79,63 +60,49 @@ export default function EnglishFlashcardsScreen() {
     });
   }
 
-  function requeue(gap: number) {
+  function grade(g: Grade) {
+    if (!ds || !ds.deck.length) return;
+    const w = ds.deck[ds.index];
+    recordFlashcardGrade("english", w.id, g);
+    const gap = SESSION_GAP[g];
     setDs((s) => {
       if (!s) return s;
+      if (gap === null) {
+        const deck = [...s.deck.slice(0, s.index), ...s.deck.slice(s.index + 1)];
+        return { deck, index: Math.min(s.index, Math.max(0, deck.length - 1)), flipped: false };
+      }
       const { deck, index } = requeueDeck(s.deck, s.index, gap);
       return { deck, index, flipped: false };
     });
   }
 
-  function noIdea() {
-    setSessNoIdea((n) => n + 1);
-    requeue(2);
-  }
-
-  function needsWork() {
-    setSessNeedsWork((n) => n + 1);
-    requeue(6);
-  }
-
-  function feelingGood() {
-    setSessFeelingGood((n) => n + 1);
-    requeue(14);
-  }
-
-  function markMastered() {
-    if (!ds || !ds.deck.length) return;
-    const w = ds.deck[ds.index];
-    const nextMastered = new Set(mastered);
-    nextMastered.add(w.id);
-    persistMastered(nextMastered);
-    setMastered(nextMastered);
-    const deck = quizzable.filter((x) => !nextMastered.has(x.id));
-    setDs({ deck, index: Math.min(ds.index, Math.max(0, deck.length - 1)), flipped: false });
-  }
+  function noIdea() { setSessNoIdea((n) => n + 1); grade("no_idea"); }
+  function needsWork() { setSessNeedsWork((n) => n + 1); grade("needs_work"); }
+  function feelingGood() { setSessFeelingGood((n) => n + 1); grade("feeling_good"); }
+  function markMastered() { setSessMastered((n) => n + 1); grade("mastered"); }
 
   function doShuffle() {
     setDs((s) => (s ? { deck: shuffle(s.deck), index: 0, flipped: false } : s));
   }
 
   function doReset() {
-    const empty = new Set<string>();
-    persistMastered(empty);
-    setMastered(empty);
-    setDs({ deck: quizzable.filter((x) => !empty.has(x.id)), index: 0, flipped: false });
+    resetFlashcardDeck("english");
+    setDs({ deck: quizzable, index: 0, flipped: false });
   }
+
 
   return (
     <View>
       <View style={styles.headerRow}>
         <Text style={styles.h1}>English</Text>
-        <Text style={styles.remaining}>{total} remaining</Text>
+        <Text style={styles.remaining}>{total} due</Text>
       </View>
 
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
       </View>
       <Text style={styles.masteredLabel}>
-        {mastered.size} mastered
+        {ready ? (total ? "reviewing what's due" : "nothing due right now") : "Loading…"}
         {undefinedCount > 0 ? ` · ${undefinedCount} words need a definition first` : ""}
       </Text>
 
@@ -163,7 +130,7 @@ export default function EnglishFlashcardsScreen() {
       </Pressable>
 
       <Text style={styles.position}>
-        {total ? `${(ds?.index ?? 0) + 1} / ${total}` : quizzable.length === 0 ? "No words to study yet" : "All mastered!"}
+        {total ? `${(ds?.index ?? 0) + 1} / ${total}` : quizzable.length === 0 ? "No words to study yet" : "All caught up!"}
       </Text>
 
       <View style={styles.controls}>
@@ -211,7 +178,7 @@ export default function EnglishFlashcardsScreen() {
           <Text style={styles.statLabel}>feeling good</Text>
         </View>
         <View style={styles.statCol}>
-          <Text style={[styles.statNum, { color: "#3d6b57" }]}>{mastered.size}</Text>
+          <Text style={[styles.statNum, { color: "#3d6b57" }]}>{sessMastered}</Text>
           <Text style={styles.statLabel}>mastered</Text>
         </View>
       </View>

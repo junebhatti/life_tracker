@@ -40,6 +40,7 @@ import type {
 } from "../types";
 import type { PodcastMeta } from "../lib/podcast";
 import type { PartOfSpeech, VocabWord } from "../lib/vocab";
+import { cardKeyFor, nextReview, type Grade, type ReviewState } from "../lib/srs";
 
 type VocabWordPatch = {
   word?: string;
@@ -221,6 +222,10 @@ type AppStateValue = {
   addVocabWord: (input: { word: string; definition?: string; pos?: PartOfSpeech }) => void;
   updateVocabWord: (id: string, patch: VocabWordPatch) => void;
   deleteVocabWord: (id: string) => void;
+  flashcardReviews: Record<string, ReviewState>;
+  flashcardReviewsLoaded: boolean;
+  recordFlashcardGrade: (deck: "english" | "urdu", cardId: string, grade: Grade) => void;
+  resetFlashcardDeck: (deck: "english" | "urdu") => void;
   selectedProjectId: string | null;
   openProject: (id: string | null) => void;
   capture: "text" | null;
@@ -272,6 +277,11 @@ export function AppStateProvider({
   const [waterHistory, setWaterHistory] = useState<WaterHistoryDay[]>([]);
   const [waterEntries, setWaterEntries] = useState<WaterEntry[]>([]);
   const [vocabWords, setVocabWords] = useState<VocabWord[]>([]);
+  const [flashcardReviews, setFlashcardReviews] = useState<Record<string, ReviewState>>({});
+  const [flashcardReviewsLoaded, setFlashcardReviewsLoaded] = useState(false);
+  // Mirror of the reviews map so the (dependency-free) grade callback can read
+  // the latest schedule without going stale.
+  const flashcardReviewsRef = useRef<Record<string, ReviewState>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -308,6 +318,7 @@ export function AppStateProvider({
       loadWater(),
       loadWaterHistory(),
       loadVocabWords(),
+      loadFlashcardReviews(),
     ]);
     setLoading(false);
   }
@@ -533,6 +544,22 @@ export function AppStateProvider({
     }
   }
 
+  async function loadFlashcardReviews() {
+    const { data } = await supabase
+      .from("flashcard_reviews")
+      .select("card_key, interval_days, due_at, reps")
+      .eq("user_id", userId);
+    if (data) {
+      const map: Record<string, ReviewState> = {};
+      for (const r of data as { card_key: string; interval_days: number; due_at: string; reps: number }[]) {
+        map[r.card_key] = { intervalDays: Number(r.interval_days), dueAt: r.due_at, reps: r.reps };
+      }
+      flashcardReviewsRef.current = map;
+      setFlashcardReviews(map);
+    }
+    setFlashcardReviewsLoaded(true);
+  }
+
   // Re-pull everything without clearing the screen (used by the manual Sync
   // button and by the foreground refetch below).
   const refreshAll = useCallback(async () => {
@@ -550,6 +577,7 @@ export function AppStateProvider({
       loadWater(),
       loadWaterHistory(),
       loadVocabWords(),
+      loadFlashcardReviews(),
     ]);
     setRefreshing(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1214,6 +1242,53 @@ export function AppStateProvider({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showToast]);
 
+  // ---- flashcard spaced repetition ----------------------------------------
+
+  const recordFlashcardGrade = useCallback((deck: "english" | "urdu", cardId: string, grade: Grade) => {
+    const key = cardKeyFor(deck, cardId);
+    const state = nextReview(flashcardReviewsRef.current[key], grade);
+    const nextMap = { ...flashcardReviewsRef.current, [key]: state };
+    flashcardReviewsRef.current = nextMap;
+    setFlashcardReviews(nextMap);
+    void supabase
+      .from("flashcard_reviews")
+      .upsert(
+        {
+          user_id: userId,
+          deck,
+          card_key: key,
+          interval_days: state.intervalDays,
+          due_at: state.dueAt,
+          last_grade: grade,
+          reps: state.reps,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,card_key" },
+      )
+      .then(({ error }) => {
+        if (error) console.error("Failed to save flashcard review", error);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const resetFlashcardDeck = useCallback((deck: "english" | "urdu") => {
+    const next: Record<string, ReviewState> = {};
+    for (const [k, v] of Object.entries(flashcardReviewsRef.current)) {
+      if (!k.startsWith(`${deck}:`)) next[k] = v;
+    }
+    flashcardReviewsRef.current = next;
+    setFlashcardReviews(next);
+    void supabase
+      .from("flashcard_reviews")
+      .delete()
+      .eq("user_id", userId)
+      .eq("deck", deck)
+      .then(({ error }) => {
+        if (error) console.error("Failed to reset flashcard schedule", error);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -1242,6 +1317,7 @@ export function AppStateProvider({
       query, setQuery,
       selectedNoteId, openNote, updateNote, addPodcastEpisode, savePodcastEpisode,
       vocabWords, addVocabWord, updateVocabWord, deleteVocabWord,
+      flashcardReviews, flashcardReviewsLoaded, recordFlashcardGrade, resetFlashcardDeck,
       selectedProjectId, openProject,
       capture, draft, setDraft, openCapture, closeCapture, submitCapture,
       deleteNote,
@@ -1257,6 +1333,7 @@ export function AppStateProvider({
       libFilter, query,
       selectedNoteId, openNote, updateNote, addPodcastEpisode, savePodcastEpisode,
       vocabWords, addVocabWord, updateVocabWord, deleteVocabWord,
+      flashcardReviews, flashcardReviewsLoaded, recordFlashcardGrade, resetFlashcardDeck,
       selectedProjectId, openProject,
       capture, draft, openCapture, closeCapture, submitCapture,
       deleteNote,
