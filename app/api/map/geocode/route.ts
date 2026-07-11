@@ -12,8 +12,6 @@ export type GeocodeResult = {
   neighborhood: string;
   boundaryGeoJson: unknown | null;
   type: string;
-  /** 2024 total population, when the place is a known LA neighbourhood. */
-  population?: number;
 };
 
 /** Soft-bias boxes for the two metros the user actually lives in, so a bare

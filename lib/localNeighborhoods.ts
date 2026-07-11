@@ -5,7 +5,6 @@
 // SETS to add a metro (e.g. NYC neighbourhood tabulation areas).
 
 import laData from "./data/laNeighborhoods.json";
-import { neighborhoodPopulation } from "./laPopulation";
 import type { GeocodeResult } from "@/app/api/map/geocode/route";
 
 type LocalHood = { name: string; lat: number; lng: number; geometry: unknown };
@@ -65,6 +64,5 @@ export function searchLocalNeighborhoods(query: string, region: string): Geocode
     neighborhood: h.name,
     boundaryGeoJson: h.geometry,
     type: "neighbourhood",
-    population: neighborhoodPopulation(h.name),
   }));
 }
