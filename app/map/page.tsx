@@ -27,6 +27,13 @@ function authHeaders(token: string | undefined): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** "fast_food" -> "Fast food" for the little result-type hint. */
+function prettyType(type: string): string {
+  if (!type) return "Place";
+  const s = type.replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // ── geocoder search hook ──────────────────────────────────────────────────────
 
 function useGeocode(query: string, region: string, token: string | undefined) {
@@ -477,7 +484,7 @@ function GeocoderPanel({
             onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
             onFocus={() => setShowResults(true)}
             onBlur={() => setTimeout(() => setShowResults(false), 150)}
-            placeholder="Frogtown, LA  ·  Cosa Nostra restaurant"
+            placeholder="Night + Market  ·  Silver Lake  ·  a bar you liked"
             autoComplete="off"
           />
           {searching && (
@@ -485,8 +492,8 @@ function GeocoderPanel({
           )}
           {showResults && results.length > 0 && (
             <ul className="absolute left-0 right-0 top-full mt-1 bg-white border border-border rounded-md shadow-md z-10 max-h-64 overflow-y-auto">
-              {results.map((r) => (
-                <li key={r.placeId}>
+              {results.map((r, i) => (
+                <li key={`${r.placeId}-${i}`}>
                   <button
                     type="button"
                     onMouseDown={() => selectResult(r)}
@@ -494,9 +501,13 @@ function GeocoderPanel({
                   >
                     <p className="text-sm font-medium text-foreground">{r.name}</p>
                     <p className="text-[11px] text-muted truncate">{r.displayName}</p>
-                    {!!r.boundaryGeoJson && (
-                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-[#2323e8]">includes boundary</p>
-                    )}
+                    <p className="mt-0.5 text-[10px] uppercase tracking-wider">
+                      {r.boundaryGeoJson ? (
+                        <span className="text-[#2323e8]">includes boundary</span>
+                      ) : (
+                        <span className="text-muted">{prettyType(r.type)}</span>
+                      )}
+                    </p>
                   </button>
                 </li>
               ))}
