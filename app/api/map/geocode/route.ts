@@ -92,10 +92,23 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Surface results that carry an actual boundary polygon first — that's what
-  // makes a neighbourhood "look at-able with a boundary" — while keeping
-  // Nominatim's importance order within each group.
-  results.sort((a, b) => Number(!!b.boundaryGeoJson) - Number(!!a.boundaryGeoJson));
+  // Rank results so the fine, neighbourhood-scale outlines the user actually
+  // wants (Highland Park, Silver Lake, Frogtown) beat coarse "sub-city"
+  // districts and bare points. Score = has-boundary (most important) +
+  // neighbourhood-scale feature type, keeping Nominatim's importance order
+  // within a tie.
+  const FINE_TYPES = new Set([
+    "neighbourhood",
+    "suburb",
+    "quarter",
+    "city_block",
+    "residential",
+    "borough",
+    "city_district",
+  ]);
+  const score = (r: GeocodeResult) =>
+    (r.boundaryGeoJson ? 2 : 0) + (FINE_TYPES.has((r.type || "").toLowerCase()) ? 1 : 0);
+  results.sort((a, b) => score(b) - score(a));
 
   return NextResponse.json({ results });
 }
