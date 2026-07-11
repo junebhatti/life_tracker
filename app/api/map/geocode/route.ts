@@ -13,19 +13,38 @@ export type GeocodeResult = {
   type: string;
 };
 
+/** Soft-bias boxes for the two metros the user actually lives in, so a bare
+ *  neighbourhood name resolves locally instead of to a same-named town in
+ *  Denmark or Minnesota. Format: west,north,east,south (lon/lat corners). */
+const REGION_VIEWBOX: Record<string, string> = {
+  la: "-118.95,34.45,-117.55,33.60",
+  nyc: "-74.30,40.95,-73.65,40.48",
+};
+
 export async function GET(req: NextRequest) {
   const userId = await userIdFromRequest(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const q = req.nextUrl.searchParams.get("q")?.trim();
   if (!q || q.length < 2) return NextResponse.json({ results: [] });
+  const region = req.nextUrl.searchParams.get("region") ?? "";
 
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", q);
   url.searchParams.set("format", "json");
-  url.searchParams.set("limit", "6");
+  url.searchParams.set("limit", "10");
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("polygon_geojson", "1");
+  // Simplify polygons a touch so a big neighbourhood relation isn't a huge payload.
+  url.searchParams.set("polygon_threshold", "0.0008");
+  // Both metros are in the US — restricting kills the random overseas matches.
+  url.searchParams.set("countrycodes", "us");
+  // Prefer results inside the active metro without hard-excluding the other.
+  const viewbox = REGION_VIEWBOX[region];
+  if (viewbox) {
+    url.searchParams.set("viewbox", viewbox);
+    url.searchParams.set("bounded", "0");
+  }
 
   const res = await fetch(url.toString(), {
     headers: {
@@ -72,6 +91,11 @@ export async function GET(req: NextRequest) {
       type: r.type as string,
     };
   });
+
+  // Surface results that carry an actual boundary polygon first — that's what
+  // makes a neighbourhood "look at-able with a boundary" — while keeping
+  // Nominatim's importance order within each group.
+  results.sort((a, b) => Number(!!b.boundaryGeoJson) - Number(!!a.boundaryGeoJson));
 
   return NextResponse.json({ results });
 }

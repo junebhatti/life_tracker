@@ -29,7 +29,7 @@ function authHeaders(token: string | undefined): HeadersInit {
 
 // ── geocoder search hook ──────────────────────────────────────────────────────
 
-function useGeocode(query: string, token: string | undefined) {
+function useGeocode(query: string, region: string, token: string | undefined) {
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const [searching, setSearching] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,9 +40,10 @@ function useGeocode(query: string, token: string | undefined) {
     timerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`/api/map/geocode?q=${encodeURIComponent(query)}`, {
-          headers: authHeaders(token),
-        });
+        const res = await fetch(
+          `/api/map/geocode?q=${encodeURIComponent(query)}&region=${encodeURIComponent(region)}`,
+          { headers: authHeaders(token) },
+        );
         if (res.ok) {
           const json = await res.json() as { results: GeocodeResult[] };
           setResults(json.results);
@@ -51,9 +52,16 @@ function useGeocode(query: string, token: string | undefined) {
         setSearching(false);
       }
     }, 400);
-  }, [query, token]);
+  }, [query, region, token]);
 
   return { results, searching };
+}
+
+/** Guess which metro to bias search toward from a city label. */
+function regionForCity(city: string): "la" | "nyc" {
+  const c = city.toLowerCase();
+  const nyc = ["new york", "nyc", "brooklyn", "queens", "bronx", "manhattan", "staten"];
+  return nyc.some((n) => c.includes(n)) ? "nyc" : "la";
 }
 
 // ── component ────────────────────────────────────────────────────────────────
@@ -378,7 +386,8 @@ function GeocoderPanel({
 }) {
   const [query, setQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
-  const { results, searching } = useGeocode(query, token);
+  const [region, setRegion] = useState<"la" | "nyc">(regionForCity(defaultCity));
+  const { results, searching } = useGeocode(query, region, token);
 
   const [picked, setPicked] = useState<Picked | null>(
     initial
@@ -443,9 +452,25 @@ function GeocoderPanel({
 
         {/* search */}
         <div className="relative mb-4">
-          <label className="block text-[10px] font-medium uppercase tracking-wider text-muted mb-1">
-            Search for a place
-          </label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-[10px] font-medium uppercase tracking-wider text-muted">
+              Search for a place
+            </label>
+            <div className="flex overflow-hidden rounded-md border border-border">
+              {(["la", "nyc"] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRegion(r)}
+                  className={`px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                    region === r ? "bg-[#2323e8] text-white" : "text-muted hover:bg-hover"
+                  }`}
+                >
+                  {r === "la" ? "LA" : "NYC"}
+                </button>
+              ))}
+            </div>
+          </div>
           <input
             className={inputCls}
             value={query}
@@ -470,7 +495,7 @@ function GeocoderPanel({
                     <p className="text-sm font-medium text-foreground">{r.name}</p>
                     <p className="text-[11px] text-muted truncate">{r.displayName}</p>
                     {!!r.boundaryGeoJson && (
-                      <p className="text-[10px] text-orange-600 uppercase tracking-wider mt-0.5">includes boundary</p>
+                      <p className="text-[10px] text-[#2323e8] uppercase tracking-wider mt-0.5">includes boundary</p>
                     )}
                   </button>
                 </li>
@@ -486,7 +511,7 @@ function GeocoderPanel({
               <span className="font-medium">{picked.city}</span>
               {picked.neighborhood && <> · {picked.neighborhood}</>}
               {!!picked.boundaryGeoJson && (
-                <span className="ml-2 text-orange-600">· boundary</span>
+                <span className="ml-2 text-[#2323e8]">· boundary</span>
               )}
               {!picked.boundaryGeoJson && (
                 <span className="ml-2 text-neutral-400">· radius circle</span>
