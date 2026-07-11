@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { userIdFromRequest } from "@/lib/serverAuth";
+import { searchLocalNeighborhoods } from "@/lib/localNeighborhoods";
 
 export type GeocodeResult = {
   placeId: number;
@@ -11,6 +12,8 @@ export type GeocodeResult = {
   neighborhood: string;
   boundaryGeoJson: unknown | null;
   type: string;
+  /** 2024 total population, when the place is a known LA neighbourhood. */
+  population?: number;
 };
 
 /** Soft-bias boxes for the two metros the user actually lives in, so a bare
@@ -46,19 +49,31 @@ export async function GET(req: NextRequest) {
     url.searchParams.set("bounded", "0");
   }
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      "User-Agent": "LifeTracker/1.0 (junaidrbhatti1@gmail.com)",
-      "Accept-Language": "en",
-    },
-    next: { revalidate: 60 },
-  });
+  // Curated neighbourhood outlines for the active metro come first — precise,
+  // consistent, and always polygonal. OSM fills in everything else (restaurants,
+  // other cities) and is only a fallback for neighbourhoods.
+  const local = searchLocalNeighborhoods(q, region);
 
-  if (!res.ok) return NextResponse.json({ error: "Geocoding failed" }, { status: 502 });
+  let data: Array<Record<string, unknown>> = [];
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        "User-Agent": "LifeTracker/1.0 (junaidrbhatti1@gmail.com)",
+        "Accept-Language": "en",
+      },
+      next: { revalidate: 60 },
+    });
+    if (res.ok) {
+      data = (await res.json()) as Array<Record<string, unknown>>;
+    } else if (local.length === 0) {
+      return NextResponse.json({ error: "Geocoding failed" }, { status: 502 });
+    }
+  } catch (error) {
+    // Network hiccup — still serve curated matches if we have them.
+    if (local.length === 0) throw error;
+  }
 
-  const data = (await res.json()) as Array<Record<string, unknown>>;
-
-  const results: GeocodeResult[] = data.map((r) => {
+  const osmResults: GeocodeResult[] = data.map((r) => {
     const addr = (r.address ?? {}) as Record<string, string>;
     const city =
       addr.city ||
@@ -92,11 +107,15 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Rank results so the fine, neighbourhood-scale outlines the user actually
-  // wants (Highland Park, Silver Lake, Frogtown) beat coarse "sub-city"
-  // districts and bare points. Score = has-boundary (most important) +
-  // neighbourhood-scale feature type, keeping Nominatim's importance order
-  // within a tie.
+  // Drop OSM duplicates of a curated neighbourhood (ours is cleaner), then
+  // merge with the curated matches up front.
+  const localNames = new Set(local.map((r) => r.name.toLowerCase()));
+  const merged = [...local, ...osmResults.filter((r) => !localNames.has(r.name.toLowerCase()))];
+
+  // Rank so the fine, neighbourhood-scale outlines the user actually wants
+  // (Highland Park, Silver Lake, Frogtown) beat coarse "sub-city" districts
+  // and bare points. Score = has-boundary (most important) + neighbourhood-scale
+  // feature type; curated results score highest and stay on top.
   const FINE_TYPES = new Set([
     "neighbourhood",
     "suburb",
@@ -108,7 +127,7 @@ export async function GET(req: NextRequest) {
   ]);
   const score = (r: GeocodeResult) =>
     (r.boundaryGeoJson ? 2 : 0) + (FINE_TYPES.has((r.type || "").toLowerCase()) ? 1 : 0);
-  results.sort((a, b) => score(b) - score(a));
+  merged.sort((a, b) => score(b) - score(a));
 
-  return NextResponse.json({ results });
+  return NextResponse.json({ results: merged });
 }

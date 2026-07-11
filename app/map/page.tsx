@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/components/AuthProvider";
 import type { MapPlace } from "@/app/api/map/places/route";
 import type { GeocodeResult } from "@/app/api/map/geocode/route";
+import { neighborhoodPopulation } from "@/lib/laPopulation";
 
 const MapCanvas = dynamic(() => import("./MapClient"), { ssr: false });
 
@@ -290,6 +291,10 @@ function DetailPanel({
   onDelete: (id: string) => void;
 }) {
   const showOfficial = place.officialName && place.officialName !== place.name;
+  const population =
+    neighborhoodPopulation(place.officialName) ??
+    neighborhoodPopulation(place.name) ??
+    neighborhoodPopulation(place.neighborhood);
 
   return (
     <div className="absolute right-0 top-0 bottom-0 w-80 bg-white border-l border-border shadow-lg overflow-y-auto z-[1000]">
@@ -302,6 +307,11 @@ function DetailPanel({
             <h3 className="mt-0.5 text-lg font-semibold text-foreground leading-tight">{place.name}</h3>
             {showOfficial && (
               <p className="mt-0.5 text-[11px] text-muted">{place.officialName}</p>
+            )}
+            {population !== undefined && (
+              <p className="mt-1 text-[11px] uppercase tracking-wider text-muted">
+                Population {population.toLocaleString()}
+              </p>
             )}
             {place.visitedAt && (
               <p className="mt-1 text-[11px] uppercase tracking-wider text-muted">
@@ -494,9 +504,12 @@ function GeocoderPanel({
                   >
                     <p className="text-sm font-medium text-foreground">{r.name}</p>
                     <p className="text-[11px] text-muted truncate">{r.displayName}</p>
-                    {!!r.boundaryGeoJson && (
-                      <p className="text-[10px] text-[#2323e8] uppercase tracking-wider mt-0.5">includes boundary</p>
-                    )}
+                    <div className="mt-0.5 flex gap-2 text-[10px] uppercase tracking-wider">
+                      {!!r.boundaryGeoJson && <span className="text-[#2323e8]">includes boundary</span>}
+                      {r.population !== undefined && (
+                        <span className="text-muted">pop {r.population.toLocaleString()}</span>
+                      )}
+                    </div>
                   </button>
                 </li>
               ))}
