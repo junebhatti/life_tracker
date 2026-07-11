@@ -205,8 +205,9 @@ const cardFace: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   padding: "30px 26px",
-  background: "#fdfcfa",
-  border: "1px solid #e2dbd2",
+  // A whisper of the site's blue so the cards feel part of the identity.
+  background: "#f7f8fd",
+  border: "1px solid #d6daf0",
 };
 
 // ── Urdu deck ─────────────────────────────────────────────────────────────────
@@ -343,7 +344,7 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
       </div>
 
       <div style={{ height: 1, background: "#e2dbd2", marginBottom: 4 }}>
-        <div style={{ height: 1, background: "#2f2f2f", width: `${progressPct}%`, transition: "width .3s ease" }} />
+        <div style={{ height: 1, background: "#2323e8", width: `${progressPct}%`, transition: "width .3s ease" }} />
       </div>
       <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", margin: "8px 0 26px" }}>{mastered.size} mastered</p>
 
@@ -469,7 +470,7 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
       </div>
 
       <div style={{ height: 1, background: "#e2dbd2", marginTop: 20, marginBottom: 4 }}>
-        <div style={{ height: 1, background: "#2f2f2f", width: `${progressPct}%`, transition: "width .3s ease" }} />
+        <div style={{ height: 1, background: "#2323e8", width: `${progressPct}%`, transition: "width .3s ease" }} />
       </div>
       <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", margin: "8px 0 26px" }}>
         {hydrated ? `${mastered.size} mastered` : "Loading…"}

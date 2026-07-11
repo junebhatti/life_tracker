@@ -245,12 +245,12 @@ const styles = StyleSheet.create({
 
   catWrap: { marginTop: 20, marginBottom: 22 },
   catLabel: { fontFamily: SERIF, fontSize: 14, color: "#2f2f2f", textDecorationLine: "underline" },
-  catMenu: { position: "absolute", top: 24, left: 0, zIndex: 6, backgroundColor: "#fdfcfa", borderWidth: 1, borderColor: "#e2dbd2", paddingVertical: 10, paddingHorizontal: 16, gap: 10, minWidth: 150 },
+  catMenu: { position: "absolute", top: 24, left: 0, zIndex: 6, backgroundColor: "#f7f8fd", borderWidth: 1, borderColor: "#e2dbd2", paddingVertical: 10, paddingHorizontal: 16, gap: 10, minWidth: 150 },
   catMenuItem: { fontFamily: SERIF, fontSize: 14, color: "#b3aaa0", paddingVertical: 2 },
   catMenuItemActive: { color: "#2f2f2f", textDecorationLine: "underline" },
 
   progressTrack: { height: 1, backgroundColor: "#e2dbd2", marginBottom: 4 },
-  progressFill: { height: 1, backgroundColor: "#2f2f2f" },
+  progressFill: { height: 1, backgroundColor: "#2323e8" },
   masteredLabel: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", marginTop: 8, marginBottom: 26 },
 
   scene: { height: 240, alignItems: "center", justifyContent: "center" },
@@ -262,9 +262,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 26,
-    backgroundColor: "#fdfcfa",
+    backgroundColor: "#f7f8fd",
     borderWidth: 1,
-    borderColor: "#e2dbd2",
+    borderColor: "#d6daf0",
     backfaceVisibility: "hidden",
   },
   faceFront: {},

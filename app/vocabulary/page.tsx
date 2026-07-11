@@ -362,6 +362,9 @@ export default function VocabularyPage() {
                   {w.pos && (
                     <span style={{ margin: "0 0 0 10px", fontFamily: SERIF, fontSize: 17, color: "#a39a90" }}>{posLabel(w.pos)}</span>
                   )}
+                  {(!w.definition || !w.definition.trim()) && (
+                    <span style={{ margin: "0 0 0 10px", fontFamily: SERIF, fontStyle: "italic", fontSize: 13, color: "#c5bdb5" }}>no definition yet</span>
+                  )}
                 </div>
               ))}
             </div>

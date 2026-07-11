@@ -24,6 +24,8 @@ const FILTER_TYPE: Record<(typeof FILTERS)[number], ScrapItemRow["type"]> = {
 const CANVAS_CARD_W = 130;
 const SCATTER_COLS = 5;
 const SCATTER_COL_SPACING = 180;
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 10;
 // Fixed per-column head starts so the top edge is uneven from the first row.
 const SCATTER_STAGGER = [0, 52, 22, 68, 34];
 
@@ -495,9 +497,6 @@ export default function ScrapbookPage() {
   const movedRef = useRef(0);
   const viewportRef = useRef<HTMLDivElement>(null);
 
-  const MIN_SCALE = 0.05;
-  const MAX_SCALE = 10;
-
   // A card keeps its stored x/y once the user has dragged it on THIS canvas.
   // "Placed here" is marked by a non-null `rot` (unused visually since the
   // grid redesign; drags save rot alongside x/y). Coordinates left over from
@@ -555,21 +554,32 @@ export default function ScrapbookPage() {
     }
   }
 
-  function zoomAt(factor: number, px: number, py: number) {
+  const zoomAt = useCallback((factor: number, px: number, py: number) => {
     setCam((c) => {
       const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, c.scale * factor));
       if (next === c.scale) return c;
       const ratio = next / c.scale;
       return { scale: next, tx: px - (px - c.tx) * ratio, ty: py - (py - c.ty) * ratio };
     });
-  }
+  }, []);
 
-  function onCanvasWheel(e: React.WheelEvent) {
-    e.preventDefault();
-    const rect = viewportRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    zoomAt(Math.exp(-e.deltaY * 0.0018), e.clientX - rect.left, e.clientY - rect.top);
-  }
+  // Wheel zoom must be a NATIVE non-passive listener: React registers
+  // onWheel passively, so preventDefault() there is ignored and a trackpad
+  // pinch (delivered as ctrl+wheel) falls through to browser page-zoom —
+  // zooming the whole page instead of the canvas.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      // Pinch deltas are much smaller than wheel ticks, so boost them.
+      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.012 : 0.0018));
+      zoomAt(factor, e.clientX - rect.left, e.clientY - rect.top);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomAt]);
 
   function zoomBy(factor: number) {
     const rect = viewportRef.current?.getBoundingClientRect();
@@ -629,8 +639,7 @@ export default function ScrapbookPage() {
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
           onMouseLeave={onCanvasMouseUp}
-          onWheel={onCanvasWheel}
-          style={{ flex: 1, position: "relative", overflow: "hidden", cursor: "grab", userSelect: "none", background: "#fff" }}
+          style={{ flex: 1, position: "relative", overflow: "hidden", cursor: "grab", userSelect: "none", touchAction: "none", background: "#fff" }}
         >
           {loading && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>

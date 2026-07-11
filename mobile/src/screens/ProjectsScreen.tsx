@@ -301,7 +301,7 @@ function FlashDeckChooser({ onChoose }: { onChoose: (deck: FlashDeck) => void })
 function FlashcardsModal({ onClose }: { onClose: () => void }) {
   const [deck, setDeck] = useState<FlashDeck>(null);
   const title = deck === "english" ? "English Vocabulary" : deck === "urdu" ? "Urdu Flashcards" : "Flashcards";
-  const dotColor = deck === "english" ? "#0d9488" : "#b23a2e";
+  const dotColor = deck === "english" ? "#0d9488" : "#2323e8";
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -396,7 +396,7 @@ export default function ProjectsScreen() {
       <View>
         <Text style={styles.groupLabel}>{`Practice · ${practiceProjects.length + 3}`}</Text>
         <Pressable style={styles.row} onPress={() => setShowFlashcards(true)}>
-          <View style={[styles.dot, { backgroundColor: "#b23a2e" }]} />
+          <View style={[styles.dot, { backgroundColor: "#2323e8" }]} />
           <View style={styles.body}>
             <Text style={styles.name}>Flashcards</Text>
             <Text style={styles.meta}>English Vocabulary or Urdu</Text>

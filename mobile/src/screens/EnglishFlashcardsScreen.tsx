@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   remaining: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0" },
 
   progressTrack: { height: 1, backgroundColor: "#e2dbd2", marginTop: 20, marginBottom: 4 },
-  progressFill: { height: 1, backgroundColor: "#2f2f2f" },
+  progressFill: { height: 1, backgroundColor: "#2323e8" },
   masteredLabel: { fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#b3aaa0", marginTop: 8, marginBottom: 26 },
 
   scene: { height: 240, alignItems: "center", justifyContent: "center" },
@@ -237,9 +237,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 26,
-    backgroundColor: "#fdfcfa",
+    backgroundColor: "#f7f8fd",
     borderWidth: 1,
-    borderColor: "#e2dbd2",
+    borderColor: "#d6daf0",
     backfaceVisibility: "hidden",
   },
   faceFront: {},

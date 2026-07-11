@@ -151,7 +151,7 @@ export default function ProjectsPage() {
                       className="border-b border-border py-3 transition-colors hover:bg-hover"
                     >
                       <div className="flex items-center gap-2 px-2">
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#b23a2e]" aria-hidden="true" />
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#2323e8]" aria-hidden="true" />
                         <span className="text-lg font-medium text-foreground">Flashcards</span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pl-6 text-[11px] uppercase tracking-wide text-muted">

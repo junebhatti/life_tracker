@@ -256,6 +256,7 @@ export default function VocabularyScreen({ onClose }: { onClose: () => void }) {
               <Pressable key={w.id} onPress={() => setActiveId(w.id)} style={styles.row}>
                 <Text style={styles.rowWord}>{w.word}</Text>
                 {w.pos && <Text style={styles.rowPos}>{posLabel(w.pos)}</Text>}
+                {(!w.definition || !w.definition.trim()) && <Text style={styles.rowMissing}>no definition yet</Text>}
               </Pressable>
             ))}
           </View>
@@ -290,13 +291,15 @@ const styles = StyleSheet.create({
   empty: { fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#b3aaa0", marginTop: 40 },
 
   list: { marginTop: 24 },
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 3 },
+  row: { flexDirection: "row", alignItems: "center", paddingVertical: 3, flexWrap: "wrap" },
   rowWord: { fontFamily: SERIF, fontSize: 30, lineHeight: 32, color: "#2f2f2f" },
   rowPos: { marginLeft: 10, fontFamily: SERIF, fontSize: 16, color: "#a39a90" },
+  rowMissing: { marginLeft: 10, fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: "#c5bdb5" },
 
-  // bottom sheets
-  scrim: { flex: 1, backgroundColor: "rgba(30,28,26,0.45)", justifyContent: "flex-end" },
-  sheet: { maxHeight: "88%", backgroundColor: "#fdfcfa", borderTopWidth: 1, borderTopColor: "#2f2f2f", paddingHorizontal: 24, paddingTop: 26, paddingBottom: 36 },
+  // word sheets — centered so the definition sits at eye level instead of
+  // pinned to the bottom of the phone screen.
+  scrim: { flex: 1, backgroundColor: "rgba(30,28,26,0.45)", justifyContent: "center", paddingHorizontal: 18 },
+  sheet: { maxHeight: "80%", backgroundColor: "#fdfcfa", borderWidth: 1, borderColor: "#2f2f2f", paddingHorizontal: 24, paddingTop: 26, paddingBottom: 30 },
 
   sheetHeadRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
   sheetEyebrow: { fontFamily: SERIF, fontSize: 12, letterSpacing: 0.4, textTransform: "uppercase", color: "#2f2f2f" },
