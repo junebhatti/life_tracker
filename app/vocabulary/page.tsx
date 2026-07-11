@@ -58,15 +58,17 @@ function AddWordSheet({ onClose }: { onClose: () => void }) {
         style={{
           position: "absolute",
           left: "50%",
-          bottom: 0,
-          transform: "translateX(-50%)",
-          width: "100%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          width: "calc(100% - 32px)",
           maxWidth: 480,
           background: "#fdfcfa",
-          borderTop: "1px solid #2f2f2f",
-          padding: "26px 24px 36px",
+          border: "1px solid #2f2f2f",
+          borderRadius: 4,
+          padding: "26px 24px 32px",
           maxHeight: "88vh",
           overflowY: "auto",
+          boxShadow: "0 12px 40px rgba(30,28,26,.18)",
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
@@ -155,15 +157,17 @@ function WordSheet({ word, onClose }: { word: VocabWord; onClose: () => void }) 
         style={{
           position: "absolute",
           left: "50%",
-          bottom: 0,
-          transform: "translateX(-50%)",
-          width: "100%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          width: "calc(100% - 32px)",
           maxWidth: 480,
           background: "#fdfcfa",
-          borderTop: "1px solid #2f2f2f",
-          padding: "26px 24px 36px",
+          border: "1px solid #2f2f2f",
+          borderRadius: 4,
+          padding: "26px 24px 32px",
           maxHeight: "88vh",
           overflowY: "auto",
+          boxShadow: "0 12px 40px rgba(30,28,26,.18)",
         }}
       >
         {editing ? (
@@ -258,12 +262,24 @@ export default function VocabularyPage() {
   const [adding, setAdding] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [missingOnly, setMissingOnly] = useState(false);
+  const [query, setQuery] = useState("");
 
   const missingCount = useMemo(() => words.filter((w) => !w.definition || !w.definition.trim()).length, [words]);
   const sorted = useMemo(() => {
-    const base = missingOnly ? words.filter((w) => !w.definition || !w.definition.trim()) : words;
+    let base = missingOnly ? words.filter((w) => !w.definition || !w.definition.trim()) : words;
+    const q = query.trim().toLowerCase();
+    if (q) {
+      // Prefix matches first (typing "art" jumps to Articulate before Bombast),
+      // then any word that merely contains the query.
+      base = base.filter((w) => w.word.toLowerCase().includes(q));
+      return [...base].sort((a, b) => {
+        const ap = a.word.toLowerCase().startsWith(q) ? 0 : 1;
+        const bp = b.word.toLowerCase().startsWith(q) ? 0 : 1;
+        return ap - bp || a.word.localeCompare(b.word, undefined, { sensitivity: "base" });
+      });
+    }
     return sortWordsAlphabetically(base);
-  }, [words, missingOnly]);
+  }, [words, missingOnly, query]);
   const active = activeId ? words.find((w) => w.id === activeId) ?? null : null;
 
   return (
@@ -310,6 +326,27 @@ export default function VocabularyPage() {
             </div>
           </div>
 
+          {hydrated && words.length > 0 && (
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search words…"
+              autoComplete="off"
+              style={{
+                width: "100%",
+                border: "none",
+                borderBottom: "1px solid #e2dbd2",
+                background: "transparent",
+                padding: "6px 0 10px",
+                fontFamily: SERIF,
+                fontSize: 18,
+                color: "#2f2f2f",
+                outline: "none",
+                marginBottom: 18,
+              }}
+            />
+          )}
+
           {missingCount > 0 && (
             <div style={{ marginTop: -12, marginBottom: 20 }}>
               <span
@@ -346,7 +383,7 @@ export default function VocabularyPage() {
 
           {hydrated && words.length > 0 && sorted.length === 0 && (
             <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 15, color: "#b3aaa0", marginTop: 40 }}>
-              Every word has a definition.
+              {query.trim() ? `No words match “${query.trim()}”.` : "Every word has a definition."}
             </p>
           )}
 

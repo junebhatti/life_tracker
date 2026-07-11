@@ -7,7 +7,7 @@ import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/components/AuthProvider";
 import { useVocab } from "@/components/VocabStore";
 import { supabase } from "@/lib/supabase";
-import { definedWords, sortWordsAlphabetically } from "@/lib/vocab";
+import { definedWords, sortWordsAlphabetically, type VocabWord } from "@/lib/vocab";
 import { URDU_CARDS, URDU_CATEGORIES, type UrduCard } from "@/lib/urduCards";
 import { cardKeyFor, isDue, nextReview, SESSION_GAP, type Grade, type ReviewState } from "@/lib/srs";
 
@@ -449,8 +449,9 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
 // ── English vocabulary deck ────────────────────────────────────────────────────
 
 function EnglishDeck({ onBack }: { onBack: () => void }) {
-  const { words, hydrated: vocabHydrated } = useVocab();
+  const { words, hydrated: vocabHydrated, updateWord } = useVocab();
   const { reviews, hydrated: reviewsHydrated, recordGrade, resetDeck } = useFlashcardReviews("english");
+  const [editing, setEditing] = useState(false);
   const quizzable = sortWordsAlphabetically(definedWords(words));
   const ready = vocabHydrated && reviewsHydrated;
 
@@ -514,6 +515,15 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
     setDs({ deck: quizzable, index: 0, flipped: false });
   }
 
+  // Edit the current card's definition in place, persisting to the vocab store
+  // and patching the live deck so the change shows immediately.
+  function saveEdit(def: string) {
+    if (!card) return;
+    updateWord(card.id, { definition: def });
+    setDs((s) => (s ? { ...s, deck: s.deck.map((w, i) => (i === s.index ? { ...w, definition: def } : w)) } : s));
+    setEditing(false);
+  }
+
   return (
     <>
       <BackLink onBack={onBack} />
@@ -551,9 +561,84 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
         {total ? `${(ds?.index ?? 0) + 1} / ${total}` : quizzable.length === 0 ? "No words to study yet" : "All caught up!"}
       </p>
 
+      {card && (
+        <div style={{ textAlign: "center", marginTop: 10 }}>
+          <span
+            onClick={() => setEditing(true)}
+            style={{ fontFamily: SERIF, fontSize: 13, letterSpacing: "0.02em", textTransform: "uppercase", color: "#8a8783", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}
+          >
+            Edit definition
+          </span>
+        </div>
+      )}
+
       <GradingControls onPrev={prev} onNoIdea={noIdea} onNeedsWork={needsWork} onFeelingGood={feelingGood} onMastered={markMastered} />
       <ShuffleReset onShuffle={doShuffle} onReset={doReset} />
       <SessionStats noIdea={sessNoIdea} needsWork={sessNeedsWork} feelingGood={sessFeelingGood} mastered={sessMastered} />
+
+      {editing && card && <EditDefinitionModal card={card} onSave={saveEdit} onClose={() => setEditing(false)} />}
     </>
+  );
+}
+
+// ── edit-definition modal (centered) ──────────────────────────────────────────
+
+function EditDefinitionModal({
+  card,
+  onSave,
+  onClose,
+}: {
+  card: VocabWord;
+  onSave: (definition: string) => void;
+  onClose: () => void;
+}) {
+  const [def, setDef] = useState(card.definition ?? "");
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50 }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(30,28,26,.45)" }} />
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          width: "calc(100% - 32px)",
+          maxWidth: 440,
+          background: "#fdfcfa",
+          border: "1px solid #2f2f2f",
+          borderRadius: 4,
+          padding: "24px 22px 26px",
+          boxShadow: "0 12px 40px rgba(30,28,26,.18)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <h2 style={{ fontFamily: SERIF, fontSize: 26, color: "#1a1a1a", margin: 0 }}>{card.word}</h2>
+          {card.pos && (
+            <span style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 14, color: "#a39a90" }}>{card.pos}</span>
+          )}
+        </div>
+        <div style={{ height: 1, background: "#e2dbd2", margin: "14px 0 16px" }} />
+        <p style={{ fontFamily: SERIF, fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "#9b9a97", margin: "0 0 6px" }}>
+          Definition
+        </p>
+        <textarea
+          value={def}
+          onChange={(e) => setDef(e.target.value)}
+          rows={4}
+          autoFocus
+          placeholder="Add a definition…"
+          style={{ width: "100%", border: "1px solid #e2dbd2", background: "transparent", padding: "9px 10px", fontFamily: SERIF, fontSize: 16, lineHeight: 1.5, color: "#2f2f2f", outline: "none", resize: "none", marginBottom: 20 }}
+        />
+        <div style={{ display: "flex", gap: 26, justifyContent: "flex-end" }}>
+          <span onClick={onClose} style={{ fontFamily: SERIF, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", color: "#8a8783", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+            Cancel
+          </span>
+          <span onClick={() => onSave(def.trim())} style={{ fontFamily: SERIF, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", color: "#2f2f2f", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+            Save
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
