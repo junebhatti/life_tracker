@@ -91,11 +91,8 @@ export default function MapPage() {
   const cityNames = useMemo(() => Array.from(grouped.keys()).sort(), [grouped]);
 
   const activeCity = selectedCity ?? cityNames[0] ?? null;
-  const neighborhoods = useMemo(() => {
-    if (!activeCity) return [];
-    return Array.from(grouped.get(activeCity)?.keys() ?? []).sort();
-  }, [grouped, activeCity]);
-  const activeNeighborhood = selectedNeighborhood ?? neighborhoods[0] ?? null;
+  // null → show every place in the city; a name → filter to that neighbourhood.
+  const activeNeighborhood = selectedNeighborhood;
 
   const visiblePlaces = useMemo(() => {
     if (!activeCity) return places;
@@ -180,13 +177,24 @@ export default function MapPage() {
               >
                 {city}
               </button>
+              {isActive && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedNeighborhood(null); setSelectedPlace(null); setPanel("none"); }}
+                  className={`w-full px-6 py-1.5 text-left text-[12px] transition-colors ${
+                    activeNeighborhood === null ? "font-medium text-foreground" : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  All neighborhoods
+                </button>
+              )}
               {isActive && cityNbs.map((nb) => (
                 <button
                   key={nb}
                   type="button"
                   onClick={() => selectNeighborhood(nb)}
                   className={`w-full px-6 py-1.5 text-left text-[12px] transition-colors ${
-                    nb === activeNeighborhood ? "text-foreground" : "text-muted hover:text-foreground"
+                    nb === activeNeighborhood ? "font-medium text-foreground" : "text-muted hover:text-foreground"
                   }`}
                 >
                   {nb}
@@ -203,6 +211,7 @@ export default function MapPage() {
           <MapCanvas
             places={visiblePlaces}
             selected={selectedPlace}
+            fitKey={`${activeCity ?? "all"}::${activeNeighborhood ?? "all"}::${visiblePlaces.length}`}
             onSelect={(p) => { setSelectedPlace(p); setPanel("detail"); }}
           />
         </div>
