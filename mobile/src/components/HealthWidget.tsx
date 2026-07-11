@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import Svg, { Circle, Line, Rect } from "react-native-svg";
+import Svg, { Circle, Line, Rect, Text as SvgText } from "react-native-svg";
 import { colors, fonts } from "../theme";
 import { useAppState } from "../state/AppState";
 import { generateHealthInsights } from "../lib/healthInsights";
@@ -146,16 +146,27 @@ function WaterHistoryChart({ days }: { days: WaterHistoryDay[] }) {
   const width = 300;
   const height = 80;
   const padding = 4;
-  const maxMl = Math.max(WATER_TARGET_ML, ...recent.map((d) => d.totalMl)) * 1.1;
-  const barSlot = (width - padding * 2) / recent.length;
+  const gutter = 26; // room for the L value labels on the left
+  const peakMl = Math.max(WATER_TARGET_ML, ...recent.map((d) => d.totalMl));
+  const maxMl = peakMl * 1.1;
+  const plotW = width - gutter - padding;
+  const barSlot = plotW / recent.length;
   const baselineY = height - padding - (WATER_TARGET_ML / maxMl) * (height - padding * 2);
+  const topY = height - padding - (peakMl / maxMl) * (height - padding * 2);
   const hitCount = recent.filter((d) => d.totalMl >= WATER_TARGET_ML).length;
 
   return (
     <View>
       <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        {/* left-axis value labels so you can read where a day landed */}
+        <SvgText x={gutter - 6} y={topY + 3} fontSize={8} fill={colors.textTertiary} textAnchor="end">
+          {`${(peakMl / 1000).toFixed(1)}L`}
+        </SvgText>
+        <SvgText x={gutter - 6} y={baselineY + 3} fontSize={8} fill={colors.textTertiary} textAnchor="end">
+          2L
+        </SvgText>
         <Line
-          x1={padding}
+          x1={gutter}
           x2={width - padding}
           y1={baselineY}
           y2={baselineY}
@@ -165,7 +176,7 @@ function WaterHistoryChart({ days }: { days: WaterHistoryDay[] }) {
         />
         {recent.map((d, i) => {
           const barHeight = Math.max(2, (d.totalMl / maxMl) * (height - padding * 2));
-          const x = padding + i * barSlot;
+          const x = gutter + i * barSlot;
           const y = height - padding - barHeight;
           const met = d.totalMl >= WATER_TARGET_ML;
           return (
@@ -394,6 +405,42 @@ function HealthDetail({ onClose }: { onClose: () => void }) {
             </View>
           ) : null}
 
+          {/* activity — more of what the health app tracks each day */}
+          {(health?.distanceKm !== undefined ||
+            health?.activeMinutes !== undefined ||
+            health?.caloriesBurned !== undefined ||
+            health?.floors !== undefined) && (
+            <>
+              <Text style={[styles.subheader, { marginTop: 28 }]}>Activity · Today</Text>
+              <View style={styles.activityGrid}>
+                {health?.distanceKm !== undefined && (
+                  <View style={styles.activityBox}>
+                    <Text style={styles.statValue}>{health.distanceKm.toFixed(2)}</Text>
+                    <Text style={styles.statUnit}>km</Text>
+                  </View>
+                )}
+                {health?.activeMinutes !== undefined && (
+                  <View style={styles.activityBox}>
+                    <Text style={styles.statValue}>{Math.round(health.activeMinutes)}</Text>
+                    <Text style={styles.statUnit}>active min</Text>
+                  </View>
+                )}
+                {health?.caloriesBurned !== undefined && (
+                  <View style={styles.activityBox}>
+                    <Text style={styles.statValue}>{Math.round(health.caloriesBurned)}</Text>
+                    <Text style={styles.statUnit}>kcal burned</Text>
+                  </View>
+                )}
+                {health?.floors !== undefined && (
+                  <View style={styles.activityBox}>
+                    <Text style={styles.statValue}>{Math.round(health.floors)}</Text>
+                    <Text style={styles.statUnit}>floors</Text>
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+
           {/* trends — compact, three small sparklines instead of three full charts */}
           <Text style={[styles.subheader, { marginTop: 28 }]}>Trends · Last 2 Weeks</Text>
           <View style={styles.sparkRow}>
@@ -506,6 +553,18 @@ const styles = StyleSheet.create({
   depthStat: { flex: 1, alignItems: "center", paddingVertical: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10 },
   depthValue: { fontFamily: fonts.serif, fontSize: 20, color: colors.textPrimary },
   depthLabel: { fontFamily: fonts.mono, fontSize: 8, textTransform: "uppercase", letterSpacing: 0.5, color: colors.textTertiary, marginTop: 3 },
+  // activity
+  activityGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  activityBox: {
+    minWidth: 88,
+    flexGrow: 1,
+    flexBasis: "28%",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
   // trends
   sparkRow: { flexDirection: "row", justifyContent: "space-between" },
   sparkCell: { alignItems: "center", gap: 4 },

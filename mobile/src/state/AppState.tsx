@@ -452,6 +452,7 @@ export function AppStateProvider({
           restingHeartRate?: number;
           steps?: number;
           nutrition?: { calories?: number; proteinGrams?: number; carbsGrams?: number; fatGrams?: number };
+          activity?: { distanceKm?: number; activeMinutes?: number; caloriesBurned?: number; floors?: number };
         };
       };
       if (json.snapshot) {
@@ -473,6 +474,10 @@ export function AppStateProvider({
           protein: s.nutrition?.proteinGrams,
           carbs: s.nutrition?.carbsGrams,
           fat: s.nutrition?.fatGrams,
+          distanceKm: s.activity?.distanceKm,
+          activeMinutes: s.activity?.activeMinutes,
+          caloriesBurned: s.activity?.caloriesBurned,
+          floors: s.activity?.floors,
         });
       }
     } catch {

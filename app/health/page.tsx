@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
-import TrendChart from "@/components/TrendChart";
+import GridChart from "@/components/GridChart";
 import NutritionRings, { type Nutrition } from "@/components/NutritionRings";
 import WaterTracker from "@/components/WaterTracker";
-import WaterHistoryChart, { type WaterHistoryDay } from "@/components/WaterHistoryChart";
+import { type WaterHistoryDay } from "@/components/WaterHistoryChart";
 import { useAuth } from "@/components/AuthProvider";
 
 type SleepStages = {
@@ -14,6 +14,13 @@ type SleepStages = {
   lightMinutes?: number;
   remMinutes?: number;
   awakeMinutes?: number;
+};
+
+type Activity = {
+  distanceKm?: number;
+  activeMinutes?: number;
+  caloriesBurned?: number;
+  floors?: number;
 };
 
 type Snapshot = {
@@ -29,6 +36,7 @@ type Snapshot = {
     stages?: SleepStages;
   };
   nutrition?: Nutrition;
+  activity?: Activity;
 };
 
 type SnapshotResponse = { configured: boolean; snapshot?: Snapshot; error?: string };
@@ -44,24 +52,11 @@ type HistoryResponse = { days?: HealthMetricsDay[]; error?: string };
 
 type WaterHistoryResponse = { days?: WaterHistoryDay[]; error?: string };
 
+type Point = { date: string; value: number };
+
 function average(values: number[]): number | undefined {
   if (values.length === 0) return undefined;
   return values.reduce((a, b) => a + b, 0) / values.length;
-}
-
-/** Compares the average of the last 7 logged values against the 7 before that. */
-function trendLabel(values: number[], unit: string, decimals = 1): string {
-  if (values.length < 2) return "Not enough data yet";
-  const recent = values.slice(-7);
-  const prior = values.slice(-14, -7);
-  const recentAvg = average(recent);
-  const priorAvg = average(prior);
-  if (recentAvg === undefined) return "Not enough data yet";
-  if (priorAvg === undefined) return `Averaging ${recentAvg.toFixed(decimals)}${unit} recently`;
-  const delta = recentAvg - priorAvg;
-  if (Math.abs(delta) < 0.05) return `Holding steady around ${recentAvg.toFixed(decimals)}${unit}`;
-  const direction = delta > 0 ? "up" : "down";
-  return `${direction === "up" ? "Up" : "Down"} ${Math.abs(delta).toFixed(decimals)}${unit} vs. the prior week (now ${recentAvg.toFixed(decimals)}${unit})`;
 }
 
 function formatClockTime(iso: string): string {
@@ -121,28 +116,83 @@ function SleepStageBreakdown({ stages }: { stages: SleepStages }) {
   );
 }
 
-/** A divider-led section: uppercase label, large current value, then its trend over time. */
-function MetricSection({
+/** A compact labeled stat used in the "Today" activity grid. */
+function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border border-border px-4 py-3">
+      <p className="text-[10px] uppercase tracking-wider text-muted">{label}</p>
+      <p className="mt-1 text-xl font-semibold tracking-tight text-foreground">
+        {value}
+        {sub && <span className="ml-1 text-[11px] font-normal text-muted">{sub}</span>}
+      </p>
+    </div>
+  );
+}
+
+/** Latest / average / min / max summary row shown above each trend chart. */
+function SummaryStats({
+  values,
+  unit,
+  decimals = 1,
+}: {
+  values: number[];
+  unit: string;
+  decimals?: number;
+}) {
+  if (values.length === 0) return null;
+  const fmt = (n: number) => `${n.toFixed(decimals)}${unit}`;
+  const avg = average(values.slice(-7)) ?? 0;
+  const items: Array<[string, string]> = [
+    ["Latest", fmt(values[values.length - 1])],
+    ["7-day avg", fmt(avg)],
+    ["Min", fmt(Math.min(...values))],
+    ["Max", fmt(Math.max(...values))],
+  ];
+  return (
+    <div className="mb-4 grid grid-cols-4 gap-2">
+      {items.map(([label, value]) => (
+        <div key={label}>
+          <p className="text-[10px] uppercase tracking-wider text-muted">{label}</p>
+          <p className="mt-0.5 text-sm font-medium text-foreground">{value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A divider-led section: uppercase label, large current value, its details, then a gridded trend. */
+function TrendSection({
   label,
   accent,
   unit,
+  chartUnit,
   current,
   currentUnit,
   points,
   loading,
   error,
+  decimals = 1,
+  format,
+  target,
+  targetLabel,
   children,
 }: {
   label: string;
   accent: string;
   unit: string;
+  chartUnit?: string;
   current: string;
   currentUnit?: string;
-  points: { date: string; value: number }[];
+  points: Point[];
   loading: boolean;
   error?: string;
+  decimals?: number;
+  format?: (v: number) => string;
+  target?: number;
+  targetLabel?: string;
   children?: React.ReactNode;
 }) {
+  const values = points.map((p) => p.value);
   return (
     <section className="border-t border-border pt-8">
       <p className="text-[11px] uppercase tracking-wider text-muted">{label}</p>
@@ -155,7 +205,7 @@ function MetricSection({
       {children}
 
       <div className="mt-6">
-        {loading && <div className="h-32 animate-pulse rounded-lg bg-hover" />}
+        {loading && <div className="h-40 animate-pulse rounded-lg bg-hover" />}
         {error && <p className="text-sm text-muted">{error}</p>}
         {!loading && !error && points.length === 0 && (
           <p className="text-sm text-muted">
@@ -164,18 +214,15 @@ function MetricSection({
         )}
         {points.length > 0 && (
           <>
-            <p className="text-[11px] uppercase tracking-wider text-muted">
-              Trend · {points.length} days
-            </p>
-            <p className="mt-1 text-sm text-foreground">
-              {trendLabel(
-                points.map((p) => p.value),
-                unit,
-              )}
-            </p>
-            <div className="mt-4">
-              <TrendChart points={points} color={accent} unit={unit} />
-            </div>
+            <SummaryStats values={values} unit={unit} decimals={decimals} />
+            <GridChart
+              points={points}
+              color={accent}
+              unit={chartUnit ?? unit}
+              format={format}
+              target={target}
+              targetLabel={targetLabel}
+            />
           </>
         )}
       </div>
@@ -183,7 +230,7 @@ function MetricSection({
   );
 }
 
-/** Comprehensive health dashboard — sleep, nutrition, steps, resting HR and their trends.
+/** Comprehensive health dashboard — sleep, nutrition, activity and their trends.
  *  Reached by clicking any metric on the Today page; intentionally not in the left nav. */
 export default function HealthPage() {
   const { session } = useAuth();
@@ -244,9 +291,9 @@ export default function HealthPage() {
   }, [token]);
 
   const snapshot = snapshotState?.snapshot;
+  const activity = snapshot?.activity;
   const historyLoading = historyState === null && Boolean(token);
   const historyError = historyState?.error;
-  const waterDays = waterHistoryState?.days ?? [];
   const waterHistoryLoading = waterHistoryState === null && Boolean(token);
   const waterHistoryError = waterHistoryState?.error;
 
@@ -254,25 +301,45 @@ export default function HealthPage() {
     () =>
       (historyState?.days ?? [])
         .map((d) => ({ date: d.date, value: d.sleepHours }))
-        .filter((p): p is { date: string; value: number } => p.value !== null),
+        .filter((p): p is Point => p.value !== null),
     [historyState],
   );
   const rhrPoints = useMemo(
     () =>
       (historyState?.days ?? [])
         .map((d) => ({ date: d.date, value: d.restingHeartRate }))
-        .filter((p): p is { date: string; value: number } => p.value !== null),
+        .filter((p): p is Point => p.value !== null),
     [historyState],
   );
   const stepsPoints = useMemo(
     () =>
       (historyState?.days ?? [])
         .map((d) => ({ date: d.date, value: d.steps }))
-        .filter((p): p is { date: string; value: number } => p.value !== null),
+        .filter((p): p is Point => p.value !== null),
     [historyState],
+  );
+  const waterPoints = useMemo(
+    () =>
+      (waterHistoryState?.days ?? []).slice(-30).map((d) => ({
+        date: d.date,
+        value: Math.round((d.totalMl / 1000) * 100) / 100,
+      })),
+    [waterHistoryState],
   );
 
   const notConnected = snapshotState && !snapshotState.configured;
+
+  const activityTiles: Array<{ label: string; value: string; sub?: string }> = [];
+  if (snapshot?.steps !== undefined)
+    activityTiles.push({ label: "Steps", value: snapshot.steps.toLocaleString() });
+  if (activity?.distanceKm !== undefined)
+    activityTiles.push({ label: "Distance", value: activity.distanceKm.toFixed(2), sub: "km" });
+  if (activity?.activeMinutes !== undefined)
+    activityTiles.push({ label: "Active", value: `${activity.activeMinutes}`, sub: "min" });
+  if (activity?.caloriesBurned !== undefined)
+    activityTiles.push({ label: "Burned", value: activity.caloriesBurned.toLocaleString(), sub: "kcal" });
+  if (activity?.floors !== undefined)
+    activityTiles.push({ label: "Floors", value: `${activity.floors}` });
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -302,9 +369,11 @@ export default function HealthPage() {
             </p>
           ) : (
             <div className="mt-10 flex flex-col gap-8">
-              {/* Nutrition */}
+              {/* Nutrition & Water — grouped: both are today's fuel/hydration */}
               <section>
-                <p className="text-[11px] uppercase tracking-wider text-muted">Nutrition · Today</p>
+                <p className="text-[11px] uppercase tracking-wider text-muted">
+                  Nutrition &amp; Water · Today
+                </p>
                 <div className="mt-5">
                   {snapshotState === null ? (
                     <div className="flex justify-center py-2">
@@ -314,28 +383,26 @@ export default function HealthPage() {
                     <NutritionRings nutrition={snapshot?.nutrition} />
                   )}
                 </div>
-              </section>
-
-              {/* Water — logged directly in-app, not from Google Health */}
-              <WaterTracker />
-
-              <section className="border-t border-border pt-8">
-                <p className="text-[11px] uppercase tracking-wider text-muted">Water · Last 30 days</p>
-                <div className="mt-6">
-                  {waterHistoryLoading && <div className="h-32 animate-pulse rounded-lg bg-hover" />}
-                  {waterHistoryError && <p className="text-sm text-muted">{waterHistoryError}</p>}
-                  {!waterHistoryLoading && !waterHistoryError && waterDays.length === 0 && (
-                    <p className="text-sm text-muted">
-                      No history yet — log some water on a few different days and a trend will appear
-                      here.
-                    </p>
-                  )}
-                  {waterDays.length > 0 && <WaterHistoryChart days={waterDays} />}
+                {/* Water lives right here with nutrition, not off on its own */}
+                <div className="mt-2">
+                  <WaterTracker />
                 </div>
               </section>
 
+              {/* Activity snapshot — more of what the health app tracks each day */}
+              {activityTiles.length > 0 && (
+                <section className="border-t border-border pt-8">
+                  <p className="text-[11px] uppercase tracking-wider text-muted">Activity · Today</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {activityTiles.map((t) => (
+                      <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {/* Sleep */}
-              <MetricSection
+              <TrendSection
                 label="Sleep · Last night"
                 accent="#a855f7"
                 unit="h"
@@ -352,6 +419,12 @@ export default function HealthPage() {
                       {snapshot.sleep.efficiency !== undefined && (
                         <> · {Math.round(snapshot.sleep.efficiency)}% efficiency</>
                       )}
+                      {snapshot.sleep.minutesToFallAsleep !== undefined && (
+                        <> · {Math.round(snapshot.sleep.minutesToFallAsleep)}m to fall asleep</>
+                      )}
+                      {snapshot.sleep.minutesAwake !== undefined && (
+                        <> · {Math.round(snapshot.sleep.minutesAwake)}m awake</>
+                      )}
                     </p>
                     {snapshot.sleep.stages ? (
                       <SleepStageBreakdown stages={snapshot.sleep.stages} />
@@ -362,10 +435,10 @@ export default function HealthPage() {
                     )}
                   </div>
                 )}
-              </MetricSection>
+              </TrendSection>
 
               {/* Steps */}
-              <MetricSection
+              <TrendSection
                 label="Steps · Today"
                 accent="#0ea5e9"
                 unit=""
@@ -373,18 +446,40 @@ export default function HealthPage() {
                 points={stepsPoints}
                 loading={historyLoading}
                 error={historyError}
+                decimals={0}
+                format={(v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : `${Math.round(v)}`)}
               />
 
               {/* Resting heart rate */}
-              <MetricSection
+              <TrendSection
                 label="Resting heart rate"
                 accent="#ef4444"
                 unit=" bpm"
+                chartUnit=""
                 current={snapshot?.restingHeartRate ? `${snapshot.restingHeartRate}` : "—"}
                 currentUnit={snapshot?.restingHeartRate ? "bpm" : undefined}
                 points={rhrPoints}
                 loading={historyLoading}
                 error={historyError}
+                decimals={0}
+                format={(v) => `${Math.round(v)}`}
+              />
+
+              {/* Water history — now a gridded, labeled trend with a 2L goal line */}
+              <TrendSection
+                label="Water · Last 30 days"
+                accent="#0891b2"
+                unit=" L"
+                chartUnit=" L"
+                current={waterPoints.length ? `${waterPoints[waterPoints.length - 1].value.toFixed(2)}` : "—"}
+                currentUnit={waterPoints.length ? "L today" : undefined}
+                points={waterPoints}
+                loading={waterHistoryLoading}
+                error={waterHistoryError}
+                decimals={2}
+                format={(v) => v.toFixed(1)}
+                target={2}
+                targetLabel="2 L goal"
               />
             </div>
           )}

@@ -127,16 +127,28 @@ function findNestedString(value: unknown, candidates: string[]): string | undefi
 }
 
 type RollupResponse = {
-  rollupDataPoints?: Array<{ steps?: { countSum?: string } }>;
+  rollupDataPoints?: Array<Record<string, unknown>>;
 };
 
-async function fetchStepsToday(accessToken: string, timeZone: string): Promise<number | undefined> {
+/**
+ * Generic "today's total" reader for any daily-rollup data type (steps, distance,
+ * active minutes, etc.). Mirrors the confirmed-working steps rollup — the field
+ * names inside the rollup point vary by data type, so we recursively search the
+ * point for the first of `candidates`, and a wrong guess simply yields undefined
+ * instead of breaking the snapshot.
+ */
+async function fetchDailyRollupTotal(
+  accessToken: string,
+  timeZone: string,
+  dataType: string,
+  candidates: string[],
+): Promise<number | undefined> {
   const today = civilDateParts(new Date(), timeZone);
   const tomorrow = shiftCivilDate(today, 1);
 
   const data = await healthFetch<RollupResponse>(
     accessToken,
-    "/users/me/dataTypes/steps/dataPoints:dailyRollUp",
+    `/users/me/dataTypes/${dataType}/dataPoints:dailyRollUp`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -149,10 +161,34 @@ async function fetchStepsToday(accessToken: string, timeZone: string): Promise<n
     },
   );
 
-  const countSum = data.rollupDataPoints?.[0]?.steps?.countSum;
-  if (countSum === undefined) return undefined;
-  const n = Number(countSum);
-  return Number.isFinite(n) ? n : undefined;
+  const point = data.rollupDataPoints?.[0];
+  if (!point) return undefined;
+  return findNestedNumber(point, candidates);
+}
+
+async function fetchStepsToday(accessToken: string, timeZone: string): Promise<number | undefined> {
+  const steps = await fetchDailyRollupTotal(accessToken, timeZone, "steps", ["countSum", "count", "sum"]);
+  return steps === undefined ? undefined : Math.round(steps);
+}
+
+/** Optional daily activity totals, best-effort from their respective rollups. */
+async function fetchActivityToday(
+  accessToken: string,
+  timeZone: string,
+): Promise<ActivitySummary | undefined> {
+  const [distanceMeters, activeMinutes, caloriesBurned, floors] = await Promise.all([
+    fetchDailyRollupTotal(accessToken, timeZone, "distance", ["meters", "metersSum", "distanceSum", "sum"]).catch(() => undefined),
+    fetchDailyRollupTotal(accessToken, timeZone, "active-minutes", ["minutes", "minutesSum", "countSum", "sum"]).catch(() => undefined),
+    fetchDailyRollupTotal(accessToken, timeZone, "active-calories-burned", ["energy", "kcal", "kilocalories", "caloriesSum", "sum"]).catch(() => undefined),
+    fetchDailyRollupTotal(accessToken, timeZone, "floors-climbed", ["floors", "countSum", "sum"]).catch(() => undefined),
+  ]);
+
+  const summary: ActivitySummary = {};
+  if (distanceMeters !== undefined) summary.distanceKm = Math.round((distanceMeters / 1000) * 100) / 100;
+  if (activeMinutes !== undefined) summary.activeMinutes = Math.round(activeMinutes);
+  if (caloriesBurned !== undefined) summary.caloriesBurned = Math.round(caloriesBurned);
+  if (floors !== undefined) summary.floors = Math.round(floors);
+  return Object.keys(summary).length > 0 ? summary : undefined;
 }
 
 type ReconcileResponse = { dataPoints?: Record<string, unknown>[] };
@@ -371,6 +407,14 @@ export type NutritionSummary = {
   fatGrams?: number;
 };
 
+/** Optional daily movement totals beyond raw step count. */
+export type ActivitySummary = {
+  distanceKm?: number;
+  activeMinutes?: number;
+  caloriesBurned?: number;
+  floors?: number;
+};
+
 /** Pulls a numeric quantity out of a field that may be a flat number or a nested `{ grams/kcal/value: n }` object. */
 function readQuantity(node: unknown, nestedCandidates: string[]): number | undefined {
   if (typeof node === "number" && Number.isFinite(node)) return node;
@@ -456,10 +500,13 @@ export type HealthSnapshot = {
   restingHeartRate?: number;
   sleep?: SleepSummary;
   nutrition?: NutritionSummary;
+  activity?: ActivitySummary;
 };
 
 /** Per-metric fetch failures, keyed by field name — surfaced in the Settings test panel. */
-type SnapshotDebug = Partial<Record<"steps" | "restingHeartRate" | "sleep" | "nutrition", string>>;
+type SnapshotDebug = Partial<
+  Record<"steps" | "restingHeartRate" | "sleep" | "nutrition" | "activity", string>
+>;
 
 async function fetchHealthSnapshotWithDebug(
   timeZone: string,
@@ -470,7 +517,7 @@ async function fetchHealthSnapshotWithDebug(
   const accessToken = await getAccessToken();
   const debug: SnapshotDebug = {};
 
-  const [steps, restingHeartRate, sleep, nutrition] = await Promise.all([
+  const [steps, restingHeartRate, sleep, nutrition, activity] = await Promise.all([
     fetchStepsToday(accessToken, timeZone).catch((error) => {
       debug.steps = error instanceof Error ? error.message : String(error);
       return undefined;
@@ -487,6 +534,10 @@ async function fetchHealthSnapshotWithDebug(
       debug.nutrition = error instanceof Error ? error.message : String(error);
       return undefined;
     }),
+    fetchActivityToday(accessToken, timeZone).catch((error) => {
+      debug.activity = error instanceof Error ? error.message : String(error);
+      return undefined;
+    }),
   ]);
 
   return {
@@ -494,6 +545,7 @@ async function fetchHealthSnapshotWithDebug(
     restingHeartRate,
     sleep,
     nutrition,
+    activity,
     debug: Object.keys(debug).length ? debug : undefined,
   };
 }

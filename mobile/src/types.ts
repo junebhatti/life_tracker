@@ -128,6 +128,11 @@ export type HealthData = {
   protein?: number;
   carbs?: number;
   fat?: number;
+  // Extra daily activity totals from the health app
+  distanceKm?: number;
+  activeMinutes?: number;
+  caloriesBurned?: number;
+  floors?: number;
 };
 
 /** One day of history from /api/health/history, for the trend graphs. */
