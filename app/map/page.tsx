@@ -11,11 +11,22 @@ const MapCanvas = dynamic(() => import("./MapClient"), { ssr: false });
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+/** A neighbourhood is a saved place that carries a boundary polygon; everything
+ *  else (restaurants, bars, shops…) is a spot that lives inside one. */
+function isNeighborhood(p: MapPlace): boolean {
+  return !!p.boundaryGeoJson;
+}
+
+/** The neighbourhood name a place belongs to (its own name for a neighbourhood). */
+function neighborhoodKey(p: MapPlace): string {
+  return (isNeighborhood(p) ? p.neighborhood || p.name : p.neighborhood) || "Other";
+}
+
 function groupPlaces(places: MapPlace[]) {
   const cities = new Map<string, Map<string, MapPlace[]>>();
   for (const p of places) {
     if (!cities.has(p.city)) cities.set(p.city, new Map());
-    const nb = p.neighborhood ?? "Other";
+    const nb = neighborhoodKey(p);
     const city = cities.get(p.city)!;
     if (!city.has(nb)) city.set(nb, []);
     city.get(nb)!.push(p);
@@ -32,6 +43,13 @@ function prettyType(type: string): string {
   if (!type) return "Place";
   const s = type.replace(/_/g, " ");
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Guess which metro to bias search toward from a city label. */
+function regionForCity(city: string): "la" | "nyc" {
+  const c = city.toLowerCase();
+  const nyc = ["new york", "nyc", "brooklyn", "queens", "bronx", "manhattan", "staten"];
+  return nyc.some((n) => c.includes(n)) ? "nyc" : "la";
 }
 
 // ── geocoder search hook ──────────────────────────────────────────────────────
@@ -64,16 +82,9 @@ function useGeocode(query: string, region: string, token: string | undefined) {
   return { results, searching };
 }
 
-/** Guess which metro to bias search toward from a city label. */
-function regionForCity(city: string): "la" | "nyc" {
-  const c = city.toLowerCase();
-  const nyc = ["new york", "nyc", "brooklyn", "queens", "bronx", "manhattan", "staten"];
-  return nyc.some((n) => c.includes(n)) ? "nyc" : "la";
-}
-
 // ── component ────────────────────────────────────────────────────────────────
 
-type PanelMode = "none" | "add" | "edit" | "detail";
+type PanelMode = "none" | "add" | "edit" | "detail" | "neighborhood";
 
 export default function MapPage() {
   const { user, session } = useAuth();
@@ -86,6 +97,9 @@ export default function MapPage() {
   const [selectedNeighborhood, setSelectedNeighborhood] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<MapPlace | null>(null);
   const [panel, setPanel] = useState<PanelMode>("none");
+  // When adding, the neighbourhood the new spot is being dropped into (set from
+  // a neighbourhood's "+ Add spot"; null for the top-level "+ Add").
+  const [addFixed, setAddFixed] = useState<string | null>(null);
 
   // ── fetch ─────────────────────────────────────────────────────────────────
 
@@ -117,6 +131,19 @@ export default function MapPage() {
     return cityMap.get(activeNeighborhood) ?? [];
   }, [places, grouped, activeCity, activeNeighborhood]);
 
+  // The boundary place + the spots that make up the currently open neighbourhood.
+  const neighborhoodPlace = useMemo(
+    () =>
+      activeNeighborhood
+        ? visiblePlaces.find((p) => isNeighborhood(p) && neighborhoodKey(p) === activeNeighborhood)
+        : undefined,
+    [visiblePlaces, activeNeighborhood],
+  );
+  const neighborhoodSpots = useMemo(
+    () => visiblePlaces.filter((p) => !isNeighborhood(p)),
+    [visiblePlaces],
+  );
+
   function selectCity(city: string) {
     setSelectedCity(city);
     setSelectedNeighborhood(null);
@@ -127,18 +154,103 @@ export default function MapPage() {
   function selectNeighborhood(nb: string) {
     setSelectedNeighborhood(nb);
     setSelectedPlace(null);
-    setPanel("none");
+    setPanel("neighborhood");
   }
 
-  // ── delete ────────────────────────────────────────────────────────────────
+  /** Clicking a pin/polygon: a neighbourhood opens its container panel, a spot its detail. */
+  function handleSelect(p: MapPlace) {
+    if (isNeighborhood(p)) {
+      setSelectedCity(p.city);
+      setSelectedNeighborhood(neighborhoodKey(p));
+      setSelectedPlace(p);
+      setPanel("neighborhood");
+    } else {
+      setSelectedPlace(p);
+      setPanel("detail");
+    }
+  }
+
+  // ── writes ──────────────────────────────────────────────────────────────────
+
+  type SavePayload = {
+    name: string;
+    officialName?: string;
+    city: string;
+    neighborhood?: string;
+    lat: number;
+    lng: number;
+    notes: string;
+    visitedAt?: string;
+    boundaryGeoJson?: unknown;
+  };
+
+  /** Ensures the neighbourhood a spot belongs to exists as a boundary place —
+   *  looking its outline up from the geocoder — before the spot is saved. */
+  const ensureNeighborhood = useCallback(
+    async (name: string, city: string) => {
+      const already = places.some(
+        (p) => p.city === city && isNeighborhood(p) && neighborhoodKey(p) === name,
+      );
+      if (already) return;
+      const region = regionForCity(city);
+      const res = await fetch(
+        `/api/map/geocode?q=${encodeURIComponent(name)}&region=${encodeURIComponent(region)}`,
+        { headers: authHeaders(token) },
+      );
+      if (!res.ok) return;
+      const { results } = (await res.json()) as { results: GeocodeResult[] };
+      const boundary = results.find((r) => r.boundaryGeoJson);
+      if (!boundary) return;
+      await fetch("/api/map/places", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(token) },
+        body: JSON.stringify({
+          name: boundary.name,
+          officialName: boundary.name !== name ? boundary.name : undefined,
+          city,
+          neighborhood: name,
+          lat: boundary.lat,
+          lng: boundary.lng,
+          notes: "",
+          boundaryGeoJson: boundary.boundaryGeoJson,
+        }),
+      });
+    },
+    [places, token],
+  );
+
+  const savePlace = useCallback(
+    async (payload: SavePayload) => {
+      // A spot with a neighbourhood we don't have yet → create the neighbourhood first.
+      if (!payload.boundaryGeoJson && payload.neighborhood) {
+        await ensureNeighborhood(payload.neighborhood, payload.city);
+      }
+      const res = await fetch("/api/map/places", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(token) },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) await load();
+    },
+    [ensureNeighborhood, token, load],
+  );
+
+  const saveNotes = useCallback(
+    async (id: string, notes: string) => {
+      await fetch(`/api/map/places/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders(token) },
+        body: JSON.stringify({ notes }),
+      });
+      await load();
+    },
+    [token, load],
+  );
 
   async function handleDelete(id: string) {
-    await fetch(`/api/map/places/${id}`, {
-      method: "DELETE",
-      headers: authHeaders(token),
-    });
+    await fetch(`/api/map/places/${id}`, { method: "DELETE", headers: authHeaders(token) });
     setSelectedPlace(null);
-    setPanel("none");
+    setPanel(activeNeighborhood ? "neighborhood" : "none");
     load();
   }
 
@@ -159,7 +271,7 @@ export default function MapPage() {
           </div>
           <button
             type="button"
-            onClick={() => { setPanel("add"); setSelectedPlace(null); }}
+            onClick={() => { setAddFixed(null); setSelectedPlace(null); setPanel("add"); }}
             className="rounded-md bg-[#2323e8] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-white hover:bg-[#1c1cba]"
           >
             + Add
@@ -227,15 +339,30 @@ export default function MapPage() {
             places={visiblePlaces}
             selected={selectedPlace}
             fitKey={`${activeCity ?? "all"}::${activeNeighborhood ?? "all"}::${visiblePlaces.length}`}
-            onSelect={(p) => { setSelectedPlace(p); setPanel("detail"); }}
+            onSelect={handleSelect}
           />
         </div>
+
+        {panel === "neighborhood" && activeNeighborhood && (
+          <NeighborhoodPanel
+            name={activeNeighborhood}
+            city={activeCity ?? ""}
+            place={neighborhoodPlace}
+            spots={neighborhoodSpots}
+            onSelectSpot={(p) => { setSelectedPlace(p); setPanel("detail"); }}
+            onAddSpot={() => { setAddFixed(activeNeighborhood); setSelectedPlace(null); setPanel("add"); }}
+            onEdit={() => { if (neighborhoodPlace) { setSelectedPlace(neighborhoodPlace); setPanel("edit"); } }}
+            onSaveNotes={(notes) => { if (neighborhoodPlace) saveNotes(neighborhoodPlace.id, notes); }}
+            onClose={() => setPanel("none")}
+          />
+        )}
 
         {panel === "detail" && selectedPlace && (
           <DetailPanel
             place={selectedPlace}
-            onClose={() => setPanel("none")}
+            onClose={() => setPanel(activeNeighborhood ? "neighborhood" : "none")}
             onEdit={() => setPanel("edit")}
+            onSaveNotes={(notes) => saveNotes(selectedPlace.id, notes)}
             onDelete={(id) => {
               if (confirm(`Delete "${selectedPlace.name}"?`)) handleDelete(id);
             }}
@@ -244,17 +371,14 @@ export default function MapPage() {
 
         {panel === "add" && (
           <GeocoderPanel
-            title="Add Place"
+            title={addFixed ? `Add a spot in ${addFixed}` : "Add Place"}
             defaultCity={activeCity ?? ""}
+            fixedNeighborhood={addFixed ?? undefined}
             token={token}
-            onClose={() => setPanel("none")}
+            onClose={() => setPanel(addFixed ? "neighborhood" : "none")}
             onSave={async (payload) => {
-              const res = await fetch("/api/map/places", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders(token) },
-                body: JSON.stringify(payload),
-              });
-              if (res.ok) { setPanel("none"); load(); }
+              await savePlace(payload);
+              setPanel(addFixed ? "neighborhood" : "none");
             }}
           />
         )}
@@ -265,15 +389,15 @@ export default function MapPage() {
             defaultCity={selectedPlace.city}
             initial={selectedPlace}
             token={token}
-            onClose={() => setPanel("detail")}
+            onClose={() => setPanel(isNeighborhood(selectedPlace) ? "neighborhood" : "detail")}
             onSave={async (payload) => {
               await fetch(`/api/map/places/${selectedPlace.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", ...authHeaders(token) },
                 body: JSON.stringify(payload),
               });
-              setPanel("none");
-              setSelectedPlace(null);
+              setPanel(isNeighborhood(selectedPlace) ? "neighborhood" : "none");
+              if (!isNeighborhood(selectedPlace)) setSelectedPlace(null);
               load();
             }}
           />
@@ -283,17 +407,149 @@ export default function MapPage() {
   );
 }
 
-// ── detail panel ──────────────────────────────────────────────────────────────
+// ── inline notes editor (shared by neighbourhood + spot panels) ────────────────
+
+function NotesBlock({ notes, onSave }: { notes: string; onSave: (notes: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(notes);
+  // Re-sync the draft if the saved notes change underneath us (React's
+  // adjust-state-during-render pattern — no effect needed).
+  const [seenNotes, setSeenNotes] = useState(notes);
+  if (seenNotes !== notes) {
+    setSeenNotes(notes);
+    setDraft(notes);
+  }
+
+  if (editing) {
+    return (
+      <div className="mt-4">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={5}
+          autoFocus
+          placeholder="Write notes…"
+          className="w-full rounded-md border border-border p-3 text-sm leading-relaxed text-foreground outline-none focus:border-neutral-400"
+        />
+        <div className="mt-2 flex gap-4">
+          <button type="button" onClick={() => { onSave(draft.trim()); setEditing(false); }} className="text-[11px] font-medium uppercase tracking-wider text-[#2323e8]">
+            Save
+          </button>
+          <button type="button" onClick={() => { setDraft(notes); setEditing(false); }} className="text-[11px] font-medium uppercase tracking-wider text-muted">
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4">
+      {notes ? (
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{notes}</p>
+      ) : (
+        <p className="text-sm italic text-muted">No notes yet.</p>
+      )}
+      <button type="button" onClick={() => setEditing(true)} className="mt-2 text-[11px] font-medium uppercase tracking-wider text-muted hover:text-foreground">
+        {notes ? "Edit notes" : "Add notes"}
+      </button>
+    </div>
+  );
+}
+
+// ── neighbourhood panel (container: notes + spots) ─────────────────────────────
+
+function NeighborhoodPanel({
+  name,
+  city,
+  place,
+  spots,
+  onSelectSpot,
+  onAddSpot,
+  onEdit,
+  onSaveNotes,
+  onClose,
+}: {
+  name: string;
+  city: string;
+  place: MapPlace | undefined;
+  spots: MapPlace[];
+  onSelectSpot: (p: MapPlace) => void;
+  onAddSpot: () => void;
+  onEdit: () => void;
+  onSaveNotes: (notes: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="absolute right-0 top-0 bottom-0 w-80 bg-white border-l border-border shadow-lg overflow-y-auto z-[1000]">
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-muted">{city} · Neighborhood</p>
+            <h3 className="mt-0.5 text-lg font-semibold leading-tight text-foreground">{name}</h3>
+          </div>
+          <button type="button" onClick={onClose} className="text-xl leading-none text-muted hover:text-foreground">×</button>
+        </div>
+
+        {place ? (
+          <NotesBlock notes={place.notes} onSave={onSaveNotes} />
+        ) : (
+          <p className="mt-4 text-xs text-muted">
+            Add a spot here and this neighborhood&apos;s outline will be pulled in automatically.
+          </p>
+        )}
+
+        {place && (
+          <button type="button" onClick={onEdit} className="mt-3 text-[11px] font-medium uppercase tracking-wider text-muted hover:text-foreground">
+            Edit neighborhood
+          </button>
+        )}
+
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
+            Spots · {spots.length}
+          </p>
+          <button
+            type="button"
+            onClick={onAddSpot}
+            className="rounded-md bg-[#2323e8] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-white hover:bg-[#1c1cba]"
+          >
+            + Add spot
+          </button>
+        </div>
+
+        <div className="mt-2 flex flex-col">
+          {spots.length === 0 && <p className="py-3 text-sm italic text-muted">No spots yet.</p>}
+          {spots.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onSelectSpot(s)}
+              className="border-b border-border py-2.5 text-left hover:bg-hover"
+            >
+              <p className="text-sm font-medium text-foreground">{s.name}</p>
+              {s.notes && <p className="mt-0.5 truncate text-[11px] text-muted">{s.notes}</p>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── detail panel (a single spot) ───────────────────────────────────────────────
 
 function DetailPanel({
   place,
   onClose,
   onEdit,
+  onSaveNotes,
   onDelete,
 }: {
   place: MapPlace;
   onClose: () => void;
   onEdit: () => void;
+  onSaveNotes: (notes: string) => void;
   onDelete: (id: string) => void;
 }) {
   const showOfficial = place.officialName && place.officialName !== place.name;
@@ -319,9 +575,7 @@ function DetailPanel({
           <button type="button" onClick={onClose} className="text-muted hover:text-foreground text-xl leading-none">×</button>
         </div>
 
-        {place.notes && (
-          <p className="mt-4 text-sm leading-relaxed text-foreground whitespace-pre-wrap">{place.notes}</p>
-        )}
+        <NotesBlock notes={place.notes} onSave={onSaveNotes} />
 
         {place.images.length > 0 && (
           <div className="mt-4 grid grid-cols-2 gap-2">
@@ -380,6 +634,7 @@ function GeocoderPanel({
   title,
   defaultCity,
   initial,
+  fixedNeighborhood,
   token,
   onClose,
   onSave,
@@ -387,6 +642,9 @@ function GeocoderPanel({
   title: string;
   defaultCity: string;
   initial?: MapPlace;
+  /** When set, the panel is adding a spot inside this neighbourhood; the saved
+   *  place is forced into it regardless of what the geocoder guesses. */
+  fixedNeighborhood?: string;
   token: string | undefined;
   onClose: () => void;
   onSave: (payload: SavePayload) => Promise<void>;
@@ -409,18 +667,17 @@ function GeocoderPanel({
       : null,
   );
 
-  // custom display name the user can freely edit
   const [customName, setCustomName] = useState(initial?.name ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [visitedAt, setVisitedAt] = useState(initial?.visitedAt ?? "");
   const [saving, setSaving] = useState(false);
 
   function selectResult(r: GeocodeResult) {
-    const city = r.city || defaultCity;
+    const city = fixedNeighborhood ? defaultCity : r.city || defaultCity;
     setPicked({
       officialName: r.name,
       city,
-      neighborhood: r.neighborhood,
+      neighborhood: fixedNeighborhood ?? r.neighborhood,
       lat: r.lat,
       lng: r.lng,
       boundaryGeoJson: r.boundaryGeoJson,
@@ -439,7 +696,7 @@ function GeocoderPanel({
       name: displayName,
       officialName: picked.officialName !== displayName ? picked.officialName : undefined,
       city: picked.city,
-      neighborhood: picked.neighborhood || undefined,
+      neighborhood: (fixedNeighborhood ?? picked.neighborhood) || undefined,
       lat: picked.lat,
       lng: picked.lng,
       notes,
@@ -461,7 +718,7 @@ function GeocoderPanel({
         <div className="relative mb-4">
           <div className="mb-1 flex items-center justify-between">
             <label className="block text-[10px] font-medium uppercase tracking-wider text-muted">
-              Search for a place
+              {fixedNeighborhood ? "Search for a spot" : "Search for a place"}
             </label>
             <div className="flex overflow-hidden rounded-md border border-border">
               {(["la", "nyc"] as const).map((r) => (
@@ -484,7 +741,7 @@ function GeocoderPanel({
             onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
             onFocus={() => setShowResults(true)}
             onBlur={() => setTimeout(() => setShowResults(false), 150)}
-            placeholder="Night + Market  ·  Silver Lake  ·  a bar you liked"
+            placeholder={fixedNeighborhood ? "a restaurant, bar, cafe…" : "Night + Market  ·  Silver Lake"}
             autoComplete="off"
           />
           {searching && (
@@ -520,12 +777,12 @@ function GeocoderPanel({
             {/* location summary badge */}
             <div className="rounded-md bg-neutral-50 border border-border px-3 py-2 text-[12px] text-foreground leading-snug">
               <span className="font-medium">{picked.city}</span>
-              {picked.neighborhood && <> · {picked.neighborhood}</>}
+              {(fixedNeighborhood || picked.neighborhood) && <> · {fixedNeighborhood ?? picked.neighborhood}</>}
               {!!picked.boundaryGeoJson && (
                 <span className="ml-2 text-[#2323e8]">· boundary</span>
               )}
               {!picked.boundaryGeoJson && (
-                <span className="ml-2 text-neutral-400">· radius circle</span>
+                <span className="ml-2 text-neutral-400">· spot</span>
               )}
             </div>
 
