@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
     return [
       { source: "/app", destination: "/app/index.html" },
       { source: "/app/", destination: "/app/index.html" },
+      // Taste of June — its own Vercel project, surfaced here at /taste
+      { source: "/taste", destination: "https://tasteofjune.vercel.app/taste" },
+      { source: "/taste/:path*", destination: "https://tasteofjune.vercel.app/taste/:path*" },
       { source: "/taste", destination: "https://tasteofjune.vercel.app/taste" },
     { source: "/taste/:path*", destination: "https://tasteofjune.vercel.app/taste/:path*" },
     ];

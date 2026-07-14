@@ -14,6 +14,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Routines", href: "/routines" },
   { label: "Projects", href: "/projects" },
   { label: "Library", href: "/library" },
+  { label: "Taste of June", href: "/taste" },
   { label: "Budget", href: "/budget" },
   { label: "Calendar", href: "/calendar" },
   { label: "Scrapbook", href: "/scrapbook" },
