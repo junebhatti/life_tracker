@@ -2,6 +2,12 @@
 
 export type TaskStatus = "open" | "done";
 
+/** A file attached to a task — a public URL from Supabase Storage plus its name. */
+export type TaskAttachment = {
+  name: string;
+  url: string;
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -15,6 +21,10 @@ export type Task = {
   starred: boolean;
   /** open = live, done = completed/archived. */
   status: TaskStatus;
+  /** Free-form notes to pick the task up later. */
+  notes?: string;
+  /** Files attached to the task. */
+  attachments?: TaskAttachment[];
   createdAt: string;
   /** ISO timestamp set when the task is marked done. */
   completedAt?: string;
@@ -27,6 +37,8 @@ export type NewTaskInput = {
   recurrence?: string;
   status?: TaskStatus;
   starred?: boolean;
+  notes?: string;
+  attachments?: TaskAttachment[];
 };
 
 /** Local YYYY-MM-DD for a date (avoids UTC off-by-one from toISOString). */

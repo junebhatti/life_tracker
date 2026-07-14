@@ -11,9 +11,16 @@ create table if not exists public.tasks (
   recurrence text,
   starred boolean not null default false,
   status text not null default 'open',
+  notes text not null default '',
+  attachments jsonb not null default '[]',
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
+
+-- In case tasks was created before notes/attachments existed: lets you keep
+-- reference notes and files (links to Supabase Storage) on a task.
+alter table public.tasks add column if not exists notes text not null default '';
+alter table public.tasks add column if not exists attachments jsonb not null default '[]';
 
 create table if not exists public.projects (
   id text primary key,

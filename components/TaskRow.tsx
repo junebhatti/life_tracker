@@ -51,7 +51,7 @@ export default function TaskRow({
         >
           {task.title}
         </p>
-        {(project || task.due || task.recurrence) && (
+        {(project || task.due || task.recurrence || task.notes || (task.attachments?.length ?? 0) > 0) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-wide">
             {project && (
               <span className="flex items-center gap-1 text-muted">
@@ -70,6 +70,12 @@ export default function TaskRow({
             )}
             {task.recurrence && (
               <span className="text-muted">↻ {task.recurrence}</span>
+            )}
+            {task.notes && <span className="text-muted">Notes</span>}
+            {(task.attachments?.length ?? 0) > 0 && (
+              <span className="text-muted">
+                {task.attachments!.length} file{task.attachments!.length === 1 ? "" : "s"}
+              </span>
             )}
           </div>
         )}

@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase";
 import {
   type NewTaskInput,
   type Task,
+  type TaskAttachment,
   type TaskStatus,
 } from "@/lib/tasks";
 
@@ -28,6 +29,8 @@ type TaskRow = {
   recurrence: string | null;
   starred: boolean;
   status: string;
+  notes: string | null;
+  attachments: TaskAttachment[] | null;
   created_at: string;
   completed_at: string | null;
 };
@@ -41,6 +44,8 @@ function fromRow(row: TaskRow): Task {
     recurrence: row.recurrence ?? undefined,
     starred: row.starred,
     status: row.status as TaskStatus,
+    notes: row.notes ?? undefined,
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
     createdAt: row.created_at,
     completedAt: row.completed_at ?? undefined,
   };
@@ -56,6 +61,8 @@ function toRow(task: Task, userId: string): TaskRow {
     recurrence: task.recurrence ?? null,
     starred: task.starred,
     status: task.status,
+    notes: task.notes ?? "",
+    attachments: task.attachments ?? [],
     created_at: task.createdAt,
     completed_at: task.completedAt ?? null,
   };
@@ -174,6 +181,8 @@ export function TaskStoreProvider({ children }: { children: React.ReactNode }) {
         recurrence: input.recurrence,
         starred: input.starred ?? false,
         status: input.status ?? "open",
+        notes: input.notes,
+        attachments: input.attachments,
         createdAt: new Date().toISOString(),
         completedAt: input.status === "done" ? new Date().toISOString() : undefined,
       };
