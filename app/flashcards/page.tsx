@@ -36,6 +36,49 @@ function requeueDeck<T>(deck: T[], index: number, gap: number): { deck: T[]; ind
   return { deck: rest, index: nextIndex };
 }
 
+// ── session persistence ────────────────────────────────────────────────────
+// Keeps the in-progress deck order, position, prev-history and session tallies
+// in localStorage so leaving and coming back resumes exactly where you were —
+// cleared only on Reset.
+
+type SavedSession = {
+  order: string[];
+  index: number;
+  history: string[];
+  noIdea: number;
+  needsWork: number;
+  feelingGood: number;
+  mastered: number;
+  cat?: string;
+};
+
+function sessionKey(deck: string) {
+  return `flashsession:v1:${deck}`;
+}
+function loadSession(deck: string): SavedSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(sessionKey(deck));
+    return raw ? (JSON.parse(raw) as SavedSession) : null;
+  } catch {
+    return null;
+  }
+}
+function saveSession(deck: string, s: SavedSession) {
+  try {
+    localStorage.setItem(sessionKey(deck), JSON.stringify(s));
+  } catch {
+    /* storage full / unavailable — non-fatal */
+  }
+}
+function clearSession(deck: string) {
+  try {
+    localStorage.removeItem(sessionKey(deck));
+  } catch {
+    /* non-fatal */
+  }
+}
+
 type Deck = "english" | "urdu" | null;
 
 export default function FlashcardsPage() {
@@ -318,16 +361,45 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
   const [cat, setCat] = useState("All");
   const [catMenuOpen, setCatMenuOpen] = useState(false);
   const [ds, setDs] = useState<{ deck: UrduCard[]; index: number; flipped: boolean } | null>(null);
-
-  // Seed the session deck from what's due the first time reviews have loaded.
-  if (ds === null && hydrated) {
-    setDs({ deck: buildUrduDeck("All", reviews), index: 0, flipped: false });
-  }
+  const [history, setHistory] = useState<string[]>([]);
 
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
   const [sessFeelingGood, setSessFeelingGood] = useState(0);
   const [sessMastered, setSessMastered] = useState(0);
+
+  // Resume a saved session if there is one, else seed from what's due.
+  if (ds === null && hydrated) {
+    const byId = new Map(URDU_CARDS.map((c) => [c.id, c]));
+    const saved = loadSession("urdu");
+    if (saved && saved.order.length) {
+      const deckCards = saved.order.map((id) => byId.get(id)).filter(Boolean) as UrduCard[];
+      setDs({ deck: deckCards, index: Math.min(saved.index, Math.max(0, deckCards.length - 1)), flipped: false });
+      setHistory(saved.history.filter((id) => byId.has(id)));
+      if (saved.cat) setCat(saved.cat);
+      setSessNoIdea(saved.noIdea);
+      setSessNeedsWork(saved.needsWork);
+      setSessFeelingGood(saved.feelingGood);
+      setSessMastered(saved.mastered);
+    } else {
+      setDs({ deck: buildUrduDeck("All", reviews), index: 0, flipped: false });
+    }
+  }
+
+  // Persist the live session so leaving and returning resumes it.
+  useEffect(() => {
+    if (!ds) return;
+    saveSession("urdu", {
+      order: ds.deck.map((c) => c.id),
+      index: ds.index,
+      history,
+      noIdea: sessNoIdea,
+      needsWork: sessNeedsWork,
+      feelingGood: sessFeelingGood,
+      mastered: sessMastered,
+      cat,
+    });
+  }, [ds, history, sessNoIdea, sessNeedsWork, sessFeelingGood, sessMastered, cat]);
 
   const total = ds ? ds.deck.length : 0;
   const card = ds && total ? ds.deck[ds.index] : null;
@@ -336,6 +408,7 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
   function selectCat(c: string) {
     setCat(c);
     setDs({ deck: buildUrduDeck(c, reviews), index: 0, flipped: false });
+    setHistory([]);
     setCatMenuOpen(false);
   }
 
@@ -344,6 +417,18 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
   }
 
   function prev() {
+    if (!ds || !ds.deck.length) return;
+    const h = [...history];
+    while (h.length) {
+      const id = h.pop()!;
+      const idx = ds.deck.findIndex((c) => c.id === id);
+      if (idx !== -1) {
+        setHistory(h);
+        setDs((s) => (s ? { ...s, index: idx, flipped: false } : s));
+        return;
+      }
+    }
+    setHistory([]);
     setDs((s) => {
       if (!s || !s.deck.length) return s;
       const n = Math.max(1, s.deck.length);
@@ -354,6 +439,7 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
   function grade(g: Grade) {
     if (!ds || !ds.deck.length) return;
     const c = ds.deck[ds.index];
+    setHistory((h) => [...h, c.id]);
     recordGrade(c.id, g);
     const gap = SESSION_GAP[g];
     setDs((s) => {
@@ -378,8 +464,14 @@ function UrduDeck({ onBack }: { onBack: () => void }) {
   }
 
   function doReset() {
+    clearSession("urdu");
     resetDeck();
     setDs({ deck: cat === "All" ? [...URDU_CARDS] : URDU_CARDS.filter((c) => c.cat === cat), index: 0, flipped: false });
+    setHistory([]);
+    setSessNoIdea(0);
+    setSessNeedsWork(0);
+    setSessFeelingGood(0);
+    setSessMastered(0);
   }
 
   return (
@@ -456,17 +548,44 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
   const ready = vocabHydrated && reviewsHydrated;
 
   const [ds, setDs] = useState<{ deck: typeof quizzable; index: number; flipped: boolean } | null>(null);
-
-  // Seed the session deck from words that are due, once both vocab and the
-  // review schedule have loaded.
-  if (ds === null && ready) {
-    setDs({ deck: quizzable.filter((w) => isDue(reviews.get(cardKeyFor("english", w.id)))), index: 0, flipped: false });
-  }
+  const [history, setHistory] = useState<string[]>([]);
 
   const [sessNoIdea, setSessNoIdea] = useState(0);
   const [sessNeedsWork, setSessNeedsWork] = useState(0);
   const [sessFeelingGood, setSessFeelingGood] = useState(0);
   const [sessMastered, setSessMastered] = useState(0);
+
+  // Seed the session once vocab + schedule load: resume a saved session if one
+  // exists, otherwise start a fresh deck of what's currently due.
+  if (ds === null && ready) {
+    const byId = new Map(quizzable.map((w) => [w.id, w]));
+    const saved = loadSession("english");
+    if (saved && saved.order.length) {
+      const deckCards = saved.order.map((id) => byId.get(id)).filter(Boolean) as typeof quizzable;
+      setDs({ deck: deckCards, index: Math.min(saved.index, Math.max(0, deckCards.length - 1)), flipped: false });
+      setHistory(saved.history.filter((id) => byId.has(id)));
+      setSessNoIdea(saved.noIdea);
+      setSessNeedsWork(saved.needsWork);
+      setSessFeelingGood(saved.feelingGood);
+      setSessMastered(saved.mastered);
+    } else {
+      setDs({ deck: quizzable.filter((w) => isDue(reviews.get(cardKeyFor("english", w.id)))), index: 0, flipped: false });
+    }
+  }
+
+  // Persist the live session so navigating away and back resumes it.
+  useEffect(() => {
+    if (!ds) return;
+    saveSession("english", {
+      order: ds.deck.map((c) => c.id),
+      index: ds.index,
+      history,
+      noIdea: sessNoIdea,
+      needsWork: sessNeedsWork,
+      feelingGood: sessFeelingGood,
+      mastered: sessMastered,
+    });
+  }, [ds, history, sessNoIdea, sessNeedsWork, sessFeelingGood, sessMastered]);
 
   const total = ds ? ds.deck.length : 0;
   const card = ds && total ? ds.deck[ds.index] : null;
@@ -477,7 +596,21 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
     setDs((s) => (s ? { ...s, flipped: !s.flipped } : s));
   }
 
+  // Step back to the most recent card still in the deck (skipping ones that
+  // have since left it), falling back to the previous index if history is empty.
   function prev() {
+    if (!ds || !ds.deck.length) return;
+    const h = [...history];
+    while (h.length) {
+      const id = h.pop()!;
+      const idx = ds.deck.findIndex((c) => c.id === id);
+      if (idx !== -1) {
+        setHistory(h);
+        setDs((s) => (s ? { ...s, index: idx, flipped: false } : s));
+        return;
+      }
+    }
+    setHistory([]);
     setDs((s) => {
       if (!s || !s.deck.length) return s;
       const n = Math.max(1, s.deck.length);
@@ -488,6 +621,7 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
   function grade(g: Grade) {
     if (!ds || !ds.deck.length) return;
     const w = ds.deck[ds.index];
+    setHistory((h) => [...h, w.id]);
     recordGrade(w.id, g);
     const gap = SESSION_GAP[g];
     setDs((s) => {
@@ -511,8 +645,14 @@ function EnglishDeck({ onBack }: { onBack: () => void }) {
   }
 
   function doReset() {
+    clearSession("english");
     resetDeck();
     setDs({ deck: quizzable, index: 0, flipped: false });
+    setHistory([]);
+    setSessNoIdea(0);
+    setSessNeedsWork(0);
+    setSessFeelingGood(0);
+    setSessMastered(0);
   }
 
   // Edit the current card's definition in place, persisting to the vocab store

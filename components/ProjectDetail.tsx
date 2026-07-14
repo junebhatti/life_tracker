@@ -18,6 +18,7 @@ import {
   projectHours,
   projectProgress,
   type ChecklistRecurrence,
+  type Project,
 } from "@/lib/projects";
 
 function targetLabel(target?: string) {
@@ -58,6 +59,8 @@ export default function ProjectDetail() {
     toggleChecklistItem,
     deleteChecklistItem,
     addActivity,
+    updateActivity,
+    deleteActivity,
   } = useProjects();
   const { tasks, pendingIds, toggleComplete, toggleStar } = useTasks();
 
@@ -78,6 +81,11 @@ export default function ProjectDetail() {
   const [actNote, setActNote] = useState("");
   const [actHours, setActHours] = useState("");
   const [actMinutes, setActMinutes] = useState("");
+  // Edit-activity form
+  const [editingActId, setEditingActId] = useState<string | null>(null);
+  const [editActNote, setEditActNote] = useState("");
+  const [editActHours, setEditActHours] = useState("");
+  const [editActMinutes, setEditActMinutes] = useState("");
   // New task modal
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -172,6 +180,29 @@ export default function ProjectDetail() {
     setActNote("");
     setActHours("");
     setActMinutes("");
+  };
+
+  const startEditActivity = (a: Project["activity"][number]) => {
+    setEditingActId(a.id);
+    setEditActNote(a.note);
+    if (a.minutes !== undefined) {
+      setEditActHours(String(Math.floor(a.minutes / 60)));
+      setEditActMinutes(String(a.minutes % 60));
+    } else {
+      setEditActHours("");
+      setEditActMinutes("");
+    }
+  };
+
+  const submitEditActivity = (e: React.FormEvent, kind: "work" | "update") => {
+    e.preventDefault();
+    if (!editActNote.trim()) return;
+    const minutes =
+      kind === "work"
+        ? (Number(editActHours) || 0) * 60 + (Number(editActMinutes) || 0)
+        : undefined;
+    updateActivity(project.id, editingActId!, { note: editActNote, minutes });
+    setEditingActId(null);
   };
 
   return (
@@ -541,17 +572,93 @@ export default function ProjectDetail() {
         </form>
 
         <div className="mt-4 flex flex-col">
-          {project.activity.map((a) => (
-            <div key={a.id} className="border-b border-border py-3">
-              <p className="text-sm text-foreground">{a.note}</p>
-              <p className="mt-0.5 text-[11px] uppercase tracking-wide text-muted">
-                {a.kind === "work" && a.minutes
-                  ? `${(a.minutes / 60).toFixed(2)}h · `
-                  : ""}
-                {a.kind} · {activityTime(a.at)}
-              </p>
-            </div>
-          ))}
+          {project.activity.map((a) =>
+            editingActId === a.id ? (
+              <form
+                key={a.id}
+                onSubmit={(e) => submitEditActivity(e, a.kind)}
+                className="border-b border-border py-3"
+              >
+                <input
+                  type="text"
+                  value={editActNote}
+                  onChange={(e) => setEditActNote(e.target.value)}
+                  autoFocus
+                  className="w-full rounded-md border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-neutral-400"
+                />
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  {a.kind === "work" ? (
+                    <div className="flex items-center gap-1 text-sm text-muted">
+                      <input
+                        type="number"
+                        min={0}
+                        value={editActHours}
+                        onChange={(e) => setEditActHours(e.target.value)}
+                        placeholder="0"
+                        aria-label="Hours"
+                        className="w-14 rounded-md border border-border px-2 py-1.5 text-sm text-foreground outline-none focus:border-neutral-400"
+                      />
+                      h
+                      <input
+                        type="number"
+                        min={0}
+                        max={59}
+                        value={editActMinutes}
+                        onChange={(e) => setEditActMinutes(e.target.value)}
+                        placeholder="00"
+                        aria-label="Minutes"
+                        className="ml-2 w-14 rounded-md border border-border px-2 py-1.5 text-sm text-foreground outline-none focus:border-neutral-400"
+                      />
+                      m
+                    </div>
+                  ) : (
+                    <span />
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingActId(null)}
+                      className="rounded-md px-3 py-1.5 text-xs text-muted hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rounded-md bg-[#2323e8] px-4 py-1.5 text-xs font-medium uppercase tracking-wider text-white hover:bg-[#1c1cba]"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <div key={a.id} className="group border-b border-border py-3">
+                <p className="text-sm text-foreground">{a.note}</p>
+                <div className="mt-0.5 flex items-center gap-3">
+                  <p className="text-[11px] uppercase tracking-wide text-muted">
+                    {a.kind === "work" && a.minutes
+                      ? `${(a.minutes / 60).toFixed(2)}h · `
+                      : ""}
+                    {a.kind} · {activityTime(a.at)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => startEditActivity(a)}
+                    className="text-[11px] uppercase tracking-wider text-muted opacity-0 transition-colors hover:text-foreground group-hover:opacity-100"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteActivity(project.id, a.id)}
+                    className="text-[11px] uppercase tracking-wider text-muted opacity-0 transition-colors hover:text-accent group-hover:opacity-100"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ),
+          )}
           {project.activity.length === 0 && (
             <p className="py-2 text-sm text-muted">No activity logged yet.</p>
           )}

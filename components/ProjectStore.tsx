@@ -93,6 +93,12 @@ type ProjectStore = {
     projectId: string,
     entry: { kind: ActivityKind; note: string; minutes?: number; at?: string },
   ) => void;
+  updateActivity: (
+    projectId: string,
+    activityId: string,
+    patch: { note?: string; minutes?: number },
+  ) => void;
+  deleteActivity: (projectId: string, activityId: string) => void;
 };
 
 const ProjectContext = createContext<ProjectStore | null>(null);
@@ -379,6 +385,34 @@ export function ProjectStoreProvider({
     [patchProject],
   );
 
+  const updateActivity = useCallback(
+    (projectId: string, activityId: string, patch: { note?: string; minutes?: number }) => {
+      patchProject(projectId, (p) => ({
+        ...p,
+        activity: p.activity.map((a) =>
+          a.id === activityId
+            ? {
+                ...a,
+                note: patch.note !== undefined ? patch.note.trim() : a.note,
+                minutes: patch.minutes !== undefined ? patch.minutes : a.minutes,
+              }
+            : a,
+        ),
+      }));
+    },
+    [patchProject],
+  );
+
+  const deleteActivity = useCallback(
+    (projectId: string, activityId: string) => {
+      patchProject(projectId, (p) => ({
+        ...p,
+        activity: p.activity.filter((a) => a.id !== activityId),
+      }));
+    },
+    [patchProject],
+  );
+
   return (
     <ProjectContext.Provider
       value={{
@@ -396,6 +430,8 @@ export function ProjectStoreProvider({
         toggleChecklistItem,
         deleteChecklistItem,
         addActivity,
+        updateActivity,
+        deleteActivity,
       }}
     >
       {children}
