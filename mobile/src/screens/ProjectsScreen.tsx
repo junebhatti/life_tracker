@@ -68,12 +68,18 @@ function AddRow({ placeholder, onSubmit }: { placeholder: string; onSubmit: (tex
         onChangeText={setText}
         placeholder={placeholder}
         placeholderTextColor={colors.textTertiary}
-        onSubmitEditing={submit}
-        returnKeyType="done"
+        multiline
+        textAlignVertical="top"
       />
-      <Pressable style={styles.addBtn} onPress={submit} hitSlop={8}>
-        <Text style={styles.addBtnText}>Add</Text>
-      </Pressable>
+      <View style={styles.addBtnRow}>
+        <Pressable
+          style={[styles.addBtn, !text.trim() && styles.addBtnDisabled]}
+          onPress={submit}
+          disabled={!text.trim()}
+        >
+          <Text style={styles.addBtnText}>Add</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -544,20 +550,23 @@ const styles = StyleSheet.create({
   itemText: { flex: 1, fontFamily: fonts.sans, fontSize: 15, lineHeight: 21, color: colors.textPrimary },
   itemDone: { color: colors.textTertiary, textDecorationLine: "line-through" },
   empty: { fontFamily: fonts.sans, fontSize: 14, color: colors.textFaint, fontStyle: "italic", marginTop: 6, marginBottom: 8 },
-  addRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
+  addRow: { marginTop: 8 },
   addInput: {
-    flex: 1,
     fontFamily: fonts.sans,
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 21,
     color: colors.textPrimary,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: 10,
+    minHeight: 44,
   },
-  addBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.surfaceDark },
-  addBtnText: { fontFamily: fonts.sansMedium, fontSize: 12.5, color: "#fff" },
+  addBtnRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 8 },
+  addBtn: { paddingVertical: 9, paddingHorizontal: 20, borderRadius: 8, backgroundColor: colors.surfaceDark },
+  addBtnDisabled: { opacity: 0.4 },
+  addBtnText: { fontFamily: fonts.sansMedium, fontSize: 13, color: "#fff" },
   // activity
   activityForm: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginBottom: 14 },
   kindToggle: { flexDirection: "row", gap: 6, marginBottom: 10 },
