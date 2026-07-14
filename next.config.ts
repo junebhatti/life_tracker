@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/app", destination: "/app/index.html" },
       { source: "/app/", destination: "/app/index.html" },
+      { source: "/taste", destination: "https://tasteofjune.vercel.app/taste" },
+    { source: "/taste/:path*", destination: "https://tasteofjune.vercel.app/taste/:path*" },
     ];
   },
   async headers() {
