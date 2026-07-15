@@ -605,3 +605,39 @@ export async function checkHealthStatus(timeZone?: string): Promise<HealthStatus
     };
   }
 }
+
+/**
+ * Diagnostic: returns the RAW steps dailyRollUp response plus what our extractor
+ * currently pulls out, so a mismatch in Google's field names is visible. Owner-only.
+ */
+export async function debugStepsRollup(timeZone?: string): Promise<unknown> {
+  const tz = resolveTimeZone(timeZone);
+  const accessToken = await getAccessToken();
+  const today = civilDateParts(new Date(), tz);
+  const tomorrow = shiftCivilDate(today, 1);
+
+  const raw = await healthFetch<RollupResponse>(
+    accessToken,
+    "/users/me/dataTypes/steps/dataPoints:dailyRollUp",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        range: { start: { date: today }, end: { date: tomorrow } },
+        windowSizeDays: 1,
+      }),
+    },
+  );
+
+  const point = raw.rollupDataPoints?.[0];
+  const stepsField = (point?.steps as { countSum?: unknown } | undefined)?.countSum;
+  return {
+    timeZone: tz,
+    requestedRange: { start: civilDateString(today), end: civilDateString(tomorrow) },
+    pointCount: raw.rollupDataPoints?.length ?? 0,
+    extracted: {
+      "steps.countSum": stepsField ?? null,
+      nestedCountSum: point ? findNestedNumber(point, ["countSum"]) ?? null : null,
+    },
+    rawResponse: raw,
+  };
+}

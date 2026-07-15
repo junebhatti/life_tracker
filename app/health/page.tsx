@@ -243,8 +243,11 @@ export default function HealthPage() {
   useEffect(() => {
     let cancelled = false;
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    fetch(`/api/health/snapshot?timezone=${encodeURIComponent(timezone)}`, {
+    // Cache-bust + no-store so a reload always pulls the live count, never a
+    // stale cached response (which would look like steps "stuck").
+    fetch(`/api/health/snapshot?timezone=${encodeURIComponent(timezone)}&t=${Date.now()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      cache: "no-store",
     })
       .then((res) => res.json())
       .then((data: SnapshotResponse) => {
