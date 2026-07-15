@@ -43,6 +43,16 @@ export default function Sidebar() {
             item.href === "/"
               ? pathname === "/"
               : pathname.startsWith(item.href);
+          // External rewrites (e.g. /taste) need a real full-page load so the
+          // server proxy serves the latest deploy — Next's client router would
+          // serve a stale cached shell.
+          if (item.external) {
+            return (
+              <a key={item.href} href={item.href} style={linkStyle(active)}>
+                {item.label}
+              </a>
+            );
+          }
           return (
             <Link key={item.href} href={item.href} style={linkStyle(active)}>
               {item.label}

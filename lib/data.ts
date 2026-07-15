@@ -6,6 +6,10 @@ export type NavItem = {
   label: string;
   /** Route the item links to. "/" is the Today home page. */
   href: string;
+  /** When true, use a plain full-page navigation instead of Next's client
+   *  router — needed for paths that are server rewrites to an external site
+   *  (e.g. /taste), so each visit fetches the latest deploy fresh. */
+  external?: boolean;
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -14,7 +18,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Routines", href: "/routines" },
   { label: "Projects", href: "/projects" },
   { label: "Library", href: "/library" },
-  { label: "Taste of June", href: "/taste" },
+  { label: "Taste of June", href: "/taste", external: true },
   { label: "Budget", href: "/budget" },
   { label: "Calendar", href: "/calendar" },
   { label: "Scrapbook", href: "/scrapbook" },
