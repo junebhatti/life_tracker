@@ -643,10 +643,9 @@ export async function debugStepsRollup(timeZone?: string): Promise<unknown> {
   // families to find where the missing steps live.
   const workingFilter = filters[0];
   const families: (string | null)[] = [
-    null,
+    "users/me/dataSourceFamilies/all-sources",
     "users/me/dataSourceFamilies/google-wearables",
-    "users/me/dataSourceFamilies/google-health-connect",
-    "users/me/dataSourceFamilies/user-input",
+    "users/me/dataSourceFamilies/google-sources",
   ];
   const reconcileAttempts: unknown[] = [];
   for (const family of families) {
