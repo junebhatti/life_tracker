@@ -167,8 +167,29 @@ async function fetchDailyRollupTotal(
 }
 
 async function fetchStepsToday(accessToken: string, timeZone: string): Promise<number | undefined> {
-  const steps = await fetchDailyRollupTotal(accessToken, timeZone, "steps", ["countSum", "count", "sum"]);
-  return steps === undefined ? undefined : Math.round(steps);
+  const today = civilDateParts(new Date(), timeZone);
+  const tomorrow = shiftCivilDate(today, 1);
+
+  const data = await healthFetch<RollupResponse>(
+    accessToken,
+    "/users/me/dataTypes/steps/dataPoints:dailyRollUp",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        range: { start: { date: today }, end: { date: tomorrow } },
+        windowSizeDays: 1,
+      }),
+    },
+  );
+
+  const point = data.rollupDataPoints?.[0];
+  if (!point) return undefined;
+  // Read the exact, confirmed field first; only fall back to a nested search so
+  // a stray top-level `count`/`sum` can never be mistaken for the step total.
+  const stepsField = point.steps as { countSum?: unknown } | undefined;
+  const raw = stepsField?.countSum ?? findNestedNumber(point, ["countSum"]);
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n) : undefined;
 }
 
 /** Optional daily activity totals, best-effort from their respective rollups. */
