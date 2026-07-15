@@ -630,14 +630,46 @@ export async function debugStepsRollup(timeZone?: string): Promise<unknown> {
 
   const point = raw.rollupDataPoints?.[0];
   const stepsField = (point?.steps as { countSum?: unknown } | undefined)?.countSum;
+
+  // The rollup is lagging, so also pull the raw step data points via reconcile
+  // (the live source) with a few filter-field guesses; we'll sum whichever works.
+  const startStr = civilDateString(today);
+  const endStr = civilDateString(tomorrow);
+  const filters = [
+    `steps.interval.civil_start_time >= "${startStr}" AND steps.interval.civil_start_time < "${endStr}"`,
+    `steps.interval.civil_end_time >= "${startStr}" AND steps.interval.civil_end_time < "${endStr}"`,
+  ];
+  const reconcileAttempts: unknown[] = [];
+  for (const filter of filters) {
+    try {
+      const params = new URLSearchParams({ filter, pageSize: "1000" });
+      const data = await healthFetch<ReconcileResponse>(
+        accessToken,
+        `/users/me/dataTypes/steps/dataPoints:reconcile?${params.toString()}`,
+      );
+      const points = data.dataPoints ?? [];
+      let sum = 0;
+      for (const p of points) sum += findNestedNumber(p, ["count", "countSum", "steps", "value"]) ?? 0;
+      reconcileAttempts.push({
+        filter,
+        ok: true,
+        pointCount: points.length,
+        summedCount: sum,
+        firstPoints: points.slice(0, 3),
+      });
+    } catch (error) {
+      reconcileAttempts.push({ filter, ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   return {
     timeZone: tz,
-    requestedRange: { start: civilDateString(today), end: civilDateString(tomorrow) },
-    pointCount: raw.rollupDataPoints?.length ?? 0,
-    extracted: {
+    requestedRange: { start: startStr, end: endStr },
+    dailyRollUp: {
+      pointCount: raw.rollupDataPoints?.length ?? 0,
       "steps.countSum": stepsField ?? null,
-      nestedCountSum: point ? findNestedNumber(point, ["countSum"]) ?? null : null,
+      rawResponse: raw,
     },
-    rawResponse: raw,
+    reconcileAttempts,
   };
 }
