@@ -367,7 +367,7 @@ export function AppStateProvider({
   async function loadProjects() {
     const { data } = await supabase
       .from("projects")
-      .select("id,name,color,type,client,target,milestones,checklist")
+      .select("id,name,color,type,client,target,milestones,checklist,activity")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
     if (data) setProjects((data as ProjectRow[]).map(mapProject));
@@ -958,7 +958,12 @@ export function AppStateProvider({
 
   const toggleHealthExpanded = useCallback(() => setHealthExpanded((v) => !v), []);
   const openNote = useCallback((id: string | null) => setSelectedNoteId(id), []);
-  const openProject = useCallback((id: string | null) => setSelectedProjectId(id), []);
+  const openProject = useCallback((id: string | null) => {
+    setSelectedProjectId(id);
+    // Pull fresh data when opening a project so it isn't stale from an edit
+    // made on the web app or another device.
+    if (id) void loadProjects();
+  }, []);
 
   const updateNote = useCallback((id: string, patch: Partial<LibraryNote>) => {
     setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));

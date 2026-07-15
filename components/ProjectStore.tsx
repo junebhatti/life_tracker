@@ -67,6 +67,9 @@ function toRow(project: Project, userId: string): ProjectRow {
 type ProjectStore = {
   projects: Project[];
   hydrated: boolean;
+  /** Re-fetch projects from Supabase (used when opening a detail page so it's
+   *  never stale, even if a realtime event was missed). */
+  refresh: () => void;
   getProject: (id: string) => Project | undefined;
   addProject: (input: NewProjectInput) => string;
   updateProject: (id: string, patch: Partial<Project>) => void;
@@ -120,6 +123,25 @@ export function ProjectStoreProvider({
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
+
+  // Re-fetch all projects for the current user. Exposed so a detail page can
+  // pull fresh data on open, covering the case where a realtime event was
+  // missed (long-open tab, Realtime disabled, another device).
+  const refresh = useCallback(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    supabase
+      .from("projects")
+      .select("*")
+      .eq("user_id", uid)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Failed to load projects", error);
+        } else if (data) {
+          setProjects((data as ProjectRow[]).map(fromRow));
+        }
+      });
+  }, [user?.id]);
 
   // Load this user's projects from Supabase, then subscribe to row changes
   // so edits made on another device or tab show up here too.
@@ -418,6 +440,7 @@ export function ProjectStoreProvider({
       value={{
         projects,
         hydrated,
+        refresh,
         getProject,
         addProject,
         updateProject,

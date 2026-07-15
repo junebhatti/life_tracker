@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Checkbox from "./Checkbox";
 import TaskRow from "./TaskRow";
 import NewTaskForm from "./NewTaskForm";
@@ -48,6 +48,7 @@ export default function ProjectDetail() {
 
   const {
     hydrated,
+    refresh,
     getProject,
     updateProject,
     deleteProject,
@@ -91,6 +92,12 @@ export default function ProjectDetail() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   // Compact color popover (opened from the small dot next to the title)
   const [showColors, setShowColors] = useState(false);
+
+  // Pull fresh data whenever this project page opens, so it reflects edits made
+  // elsewhere (mobile, another tab) even if a realtime event was missed.
+  useEffect(() => {
+    refresh();
+  }, [id, refresh]);
 
   const project = getProject(id);
 
