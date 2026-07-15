@@ -639,26 +639,30 @@ export async function debugStepsRollup(timeZone?: string): Promise<unknown> {
     `steps.interval.civil_start_time >= "${startStr}" AND steps.interval.civil_start_time < "${endStr}"`,
     `steps.interval.civil_end_time >= "${startStr}" AND steps.interval.civil_end_time < "${endStr}"`,
   ];
+  // Only the civil_start_time filter is supported; try it across data source
+  // families to find where the missing steps live.
+  const workingFilter = filters[0];
+  const families: (string | null)[] = [
+    null,
+    "users/me/dataSourceFamilies/google-wearables",
+    "users/me/dataSourceFamilies/google-health-connect",
+    "users/me/dataSourceFamilies/user-input",
+  ];
   const reconcileAttempts: unknown[] = [];
-  for (const filter of filters) {
+  for (const family of families) {
     try {
-      const params = new URLSearchParams({ filter, pageSize: "1000" });
+      const p = new URLSearchParams({ filter: workingFilter, pageSize: "1000" });
+      if (family) p.set("dataSourceFamily", family);
       const data = await healthFetch<ReconcileResponse>(
         accessToken,
-        `/users/me/dataTypes/steps/dataPoints:reconcile?${params.toString()}`,
+        `/users/me/dataTypes/steps/dataPoints:reconcile?${p.toString()}`,
       );
       const points = data.dataPoints ?? [];
       let sum = 0;
-      for (const p of points) sum += findNestedNumber(p, ["count", "countSum", "steps", "value"]) ?? 0;
-      reconcileAttempts.push({
-        filter,
-        ok: true,
-        pointCount: points.length,
-        summedCount: sum,
-        firstPoints: points.slice(0, 3),
-      });
+      for (const pt of points) sum += findNestedNumber(pt, ["count", "countSum", "steps", "value"]) ?? 0;
+      reconcileAttempts.push({ family: family ?? "(default/all)", ok: true, pointCount: points.length, summedCount: sum });
     } catch (error) {
-      reconcileAttempts.push({ filter, ok: false, error: error instanceof Error ? error.message : String(error) });
+      reconcileAttempts.push({ family: family ?? "(default/all)", ok: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
