@@ -631,48 +631,34 @@ export async function debugStepsRollup(timeZone?: string): Promise<unknown> {
   const point = raw.rollupDataPoints?.[0];
   const stepsField = (point?.steps as { countSum?: unknown } | undefined)?.countSum;
 
-  // The rollup is lagging, so also pull the raw step data points via reconcile
-  // (the live source) with a few filter-field guesses; we'll sum whichever works.
+  // Also sum the raw step data points (reconcile) — confirmed to match the
+  // rollup, so both reflect what Google's cloud currently holds.
   const startStr = civilDateString(today);
   const endStr = civilDateString(tomorrow);
-  const filters = [
-    `steps.interval.civil_start_time >= "${startStr}" AND steps.interval.civil_start_time < "${endStr}"`,
-    `steps.interval.civil_end_time >= "${startStr}" AND steps.interval.civil_end_time < "${endStr}"`,
-  ];
-  // Only the civil_start_time filter is supported; try it across data source
-  // families to find where the missing steps live.
-  const workingFilter = filters[0];
-  const families: (string | null)[] = [
-    "users/me/dataSourceFamilies/all-sources",
-    "users/me/dataSourceFamilies/google-wearables",
-    "users/me/dataSourceFamilies/google-sources",
-  ];
-  const reconcileAttempts: unknown[] = [];
-  for (const family of families) {
-    try {
-      const p = new URLSearchParams({ filter: workingFilter, pageSize: "1000" });
-      if (family) p.set("dataSourceFamily", family);
-      const data = await healthFetch<ReconcileResponse>(
-        accessToken,
-        `/users/me/dataTypes/steps/dataPoints:reconcile?${p.toString()}`,
-      );
-      const points = data.dataPoints ?? [];
-      let sum = 0;
-      for (const pt of points) sum += findNestedNumber(pt, ["count", "countSum", "steps", "value"]) ?? 0;
-      reconcileAttempts.push({ family: family ?? "(default/all)", ok: true, pointCount: points.length, summedCount: sum });
-    } catch (error) {
-      reconcileAttempts.push({ family: family ?? "(default/all)", ok: false, error: error instanceof Error ? error.message : String(error) });
-    }
+  let reconcileSum: number | null = null;
+  let reconcilePoints = 0;
+  try {
+    const p = new URLSearchParams({
+      filter: `steps.interval.civil_start_time >= "${startStr}" AND steps.interval.civil_start_time < "${endStr}"`,
+      pageSize: "1000",
+    });
+    const data = await healthFetch<ReconcileResponse>(
+      accessToken,
+      `/users/me/dataTypes/steps/dataPoints:reconcile?${p.toString()}`,
+    );
+    const points = data.dataPoints ?? [];
+    reconcilePoints = points.length;
+    reconcileSum = points.reduce((s, pt) => s + (findNestedNumber(pt, ["count"]) ?? 0), 0);
+  } catch {
+    /* leave null */
   }
 
   return {
     timeZone: tz,
+    fetchedAt: new Date().toISOString(),
     requestedRange: { start: startStr, end: endStr },
-    dailyRollUp: {
-      pointCount: raw.rollupDataPoints?.length ?? 0,
-      "steps.countSum": stepsField ?? null,
-      rawResponse: raw,
-    },
-    reconcileAttempts,
+    stepsFromRollup: stepsField ?? null,
+    stepsFromRawSum: reconcileSum,
+    rawPointCount: reconcilePoints,
   };
 }

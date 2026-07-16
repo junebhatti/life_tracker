@@ -451,7 +451,14 @@ export default function HealthPage() {
                 error={historyError}
                 decimals={0}
                 format={(v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : `${Math.round(v)}`)}
-              />
+              >
+                {snapshot?.steps !== undefined && (
+                  <p className="mt-2 text-xs text-muted">
+                    From Google Health, which syncs on a delay — today&apos;s count can trail your
+                    phone by a few hours and reconciles overnight.
+                  </p>
+                )}
+              </TrendSection>
 
               {/* Resting heart rate */}
               <TrendSection
