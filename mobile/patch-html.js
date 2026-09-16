@@ -17,8 +17,47 @@ html = html.replace(
   iosTags
 );
 
+// Self-heal bootstrap. The version-check / cache-purge logic normally lives in
+// the main JS bundle — but if a stale cached index.html points at a bundle hash
+// that 404s after a deploy, that bundle never loads, so the page is blank AND
+// the recovery code can't run. This inline script does NOT depend on the
+// bundle: it defines window.__ltRecover (purge caches + service workers, then
+// one cache-busting reload, guarded against loops). It is fired from the main
+// script tag's onerror below — a definitive "bundle failed to load" signal, so
+// it never touches a working app.
+const selfHeal = `<script>
+(function(){
+  var KEY="lt_selfheal";
+  window.__ltRecover=function(){
+    try{if(sessionStorage.getItem(KEY))return;sessionStorage.setItem(KEY,"1");}catch(e){}
+    function go(){location.replace(location.pathname.replace(/[?#].*$/,"")+"?u="+Date.now());}
+    try{
+      var t=[];
+      if(window.caches&&caches.keys)t.push(caches.keys().then(function(k){return Promise.all(k.map(function(x){return caches.delete(x);}));}));
+      if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations)t.push(navigator.serviceWorker.getRegistrations().then(function(r){return Promise.all(r.map(function(x){return x.unregister();}));}));
+      Promise.all(t).then(go,go);
+    }catch(e){go();}
+  };
+  // Clear the one-shot guard once the app has actually mounted, so a future
+  // stale deploy can self-heal again.
+  window.addEventListener("load",function(){
+    setTimeout(function(){
+      var r=document.getElementById("root");
+      if(r&&r.childNodes&&r.childNodes.length>0){try{sessionStorage.removeItem(KEY);}catch(e){}}
+    },12000);
+  });
+})();
+</script>`;
+
+// Inject the bootstrap before the main bundle and give that script an onerror
+// so a failed bundle load (the stale-shell trap) recovers immediately.
+html = html.replace(
+  /<script (src="\/app\/_expo\/static\/js\/web\/index-[^"]+\.js") defer><\/script>/,
+  `${selfHeal}\n    <script $1 defer onerror="window.__ltRecover&&window.__ltRecover()"></script>`,
+);
+
 fs.writeFileSync(file, html);
-console.log("Patched dist/index.html with iOS PWA meta tags");
+console.log("Patched dist/index.html with iOS PWA meta tags + self-heal bootstrap");
 
 // Write the current build id so the running app can detect when a newer
 // deployment exists and auto-reload into it (served no-store; see next.config).
